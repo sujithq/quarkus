@@ -1,0 +1,2 @@
+INSERT INTO doctype_sharefolder_mapping(id, doctype_id, share_folder) VALUES (1, 'invoice', '/shares/invoice');
+INSERT INTO doctype_sharefolder_mapping(id, doctype_id, share_folder) VALUES (2, 'contract', '/shares/contract');

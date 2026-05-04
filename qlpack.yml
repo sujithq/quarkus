@@ -1,0 +1,7 @@
+name: local/quarkus-models
+version: 0.0.1
+library: true
+extensionTargets:
+  codeql/java-all: "*"
+dataExtensions:
+  - ql/src/quarkus-sinks.model.yml
