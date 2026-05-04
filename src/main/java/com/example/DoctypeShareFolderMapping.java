@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.List;
 
 @Entity
 @Table(name = "doctype_sharefolder_mapping")
@@ -47,4 +48,14 @@ public class DoctypeShareFolderMapping extends PanacheEntityBase {
                 .setParameter(1, doctype)
                 .getSingleResult();
     }
+
+        public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
+                String query = "doctypeId = '" + doctype + "'";
+
+                return list(query);
+        }
+
+        public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String doctype) {
+                return list("doctypeId", doctype);
+        }
 }

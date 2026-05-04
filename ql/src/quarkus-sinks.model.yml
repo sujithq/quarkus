@@ -7,3 +7,5 @@ extensions:
       - ["jakarta.persistence", "EntityManager", false, "createQuery", "", "", "Argument[0]", "sql-injection", "manual"]
       - ["org.hibernate", "Session", false, "createQuery", "", "", "Argument[0]", "sql-injection", "manual"]
       - ["org.hibernate", "Session", false, "createNativeQuery", "", "", "Argument[0]", "sql-injection", "manual"]
+      - ["io.quarkus.hibernate.orm.panache", "PanacheEntityBase", true, "list", "", "", "Argument[0]", "sql-injection", "manual"]
+      - ["io.quarkus.hibernate.orm.panache", "PanacheEntityBase", true, "find", "", "", "Argument[0]", "sql-injection", "manual"]

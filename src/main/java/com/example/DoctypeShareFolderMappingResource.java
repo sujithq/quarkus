@@ -5,6 +5,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
+import java.util.List;
 
 @Path("/doctype-share-folder-mappings")
 @Produces(MediaType.APPLICATION_JSON)
@@ -19,5 +20,17 @@ public class DoctypeShareFolderMappingResource {
     @Path("/safe")
     public DoctypeShareFolderMapping findSafe(@QueryParam("doctype") String doctype) {
         return DoctypeShareFolderMapping.findByDoctypeSafe(doctype);
+    }
+
+    @GET
+    @Path("/panache-unsafe")
+    public List<DoctypeShareFolderMapping> findPanacheUnsafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypePanacheUnsafe(doctype);
+    }
+
+    @GET
+    @Path("/panache-safe")
+    public List<DoctypeShareFolderMapping> findPanacheSafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypePanacheSafe(doctype);
     }
 }

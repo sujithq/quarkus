@@ -96,6 +96,10 @@ Right: false, because these are instance methods
 10. Baseline SARIF and modeled SARIF both report `java/sql-injection` at `src/main/java/com/example/DoctypeShareFolderMapping.java:34:36` for the exact target flow.
 11. Key finding: current CodeQL already models `jakarta.persistence.EntityManager.createNativeQuery(sql, Class)`, so this exact JPA case is a control case rather than a before/after model-only demo.
 12. Debug queries confirm `createNativeQuery` resolves to `jakarta.persistence.EntityManager.createNativeQuery` and the SQL expression is `Argument[0]`.
+13. Added a Quarkus/Panache-specific unsafe flow: `findByDoctypePanacheUnsafe(String doctype)` builds `query` by concatenation and calls `PanacheEntityBase.list(query)`.
+14. Baseline SARIF still reports only the direct JPA case.
+15. Modeled SARIF reports both the direct JPA case and the Panache `list(query)` case at `src/main/java/com/example/DoctypeShareFolderMapping.java:55:29`.
+16. This Panache example is the stronger custom-pack proof: baseline misses it, modeled analysis catches it after adding Panache sink tuples.
 
 **Validated Commands**
 1. `mvn clean package`
