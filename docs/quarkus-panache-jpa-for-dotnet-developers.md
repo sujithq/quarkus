@@ -315,3 +315,42 @@ For rollout discussions:
 3. Use baseline CodeQL to prove what is already covered.
 4. Use model packs for project-specific or framework-specific APIs that baseline misses.
 5. Promote only validated model entries to an organization-level model pack.
+
+## Where Legacy JBoss Fits
+
+Legacy JBoss EAP is a different validation track from Quarkus.
+
+In .NET terms, think of it like comparing a modern ASP.NET Core application with an older ASP.NET Framework application that has years of custom repository/helper patterns. Some underlying database APIs may still be recognizable, but the application-specific wrappers often matter more.
+
+For legacy JBoss, the stack is often closer to:
+
+```text
+HTTP endpoint / servlet / RESTEasy resource
+  -> service layer
+  -> DAO / repository layer
+  -> JPA EntityManager or Hibernate Session
+  -> database
+```
+
+CodeQL likely already knows many standard JPA/Hibernate sinks, such as:
+
+```java
+entityManager.createNativeQuery(sql)
+entityManager.createQuery(jpql)
+session.createQuery(hql)
+session.createNativeQuery(sql)
+```
+
+The risky unknowns are usually custom abstractions, for example:
+
+```java
+legacyDao.findByWhereClause(whereClause)
+queryHelper.executeHql(hql)
+repository.runNativeSql(sql)
+```
+
+Those custom methods may need model-pack entries if baseline CodeQL cannot see through them or does not know they execute SQL/HQL.
+
+So the fair statement is:
+
+> We have proven direct JPA coverage and a Quarkus/Panache model-pack gap. We have not yet proven legacy JBoss coverage. Legacy JBoss needs its own baseline-vs-modeled proof using representative DAO, repository, and Hibernate patterns from the real application.

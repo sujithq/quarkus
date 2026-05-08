@@ -47,7 +47,7 @@ public class DoctypeShareFolderMapping extends PanacheEntityBase {
                         DoctypeShareFolderMapping.class)
                 .setParameter(1, doctype)
                 .getSingleResult();
-    }
+        }
 
         public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
                 String query = "doctypeId = '" + doctype + "'";

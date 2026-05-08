@@ -389,6 +389,53 @@ Use this wording:
 4. A production model pack should include a coverage matrix, false-positive review, and tests for representative repository patterns.
 5. Legacy JBoss/Hibernate stacks should be assessed separately because many direct Hibernate/JPA sinks are already modeled, while application-specific DAO wrappers may not be.
 
+## Legacy JBoss / JBoss EAP Scope
+
+This proof does not yet validate a legacy JBoss EAP application. It validates Quarkus 3 plus JPA plus Panache.
+
+For legacy JBoss stacks, split the investigation into two categories:
+
+1. Standard Java persistence APIs that CodeQL likely already knows.
+2. Legacy application/framework abstractions that may need model-pack support.
+
+Examples that are likely already covered by baseline CodeQL, depending on exact version and call shape:
+
+```java
+entityManager.createNativeQuery(sql)
+entityManager.createQuery(jpql)
+session.createQuery(hql)
+session.createNativeQuery(sql)
+```
+
+Examples that may need custom modeling in legacy JBoss applications:
+
+```java
+legacyDao.findByWhereClause(whereClause)
+queryHelper.createNative(sql)
+repository.executeHql(hql)
+genericFinder.listByQuery(queryText)
+```
+
+The recommended customer position is:
+
+> We have proven the model-pack mechanism on a Quarkus/Panache gap. We have not yet proven coverage for legacy JBoss EAP. For JBoss, the next step is to create a small representative EAP/Hibernate sample or extract real DAO/repository patterns from the application, then run the same baseline-vs-modeled comparison.
+
+Suggested JBoss validation matrix:
+
+| Pattern | Expected Baseline Result | Model Pack Needed? |
+| --- | --- | --- |
+| `EntityManager.createNativeQuery(sql)` | Likely detected | Usually no |
+| `EntityManager.createQuery(jpql)` | Likely detected | Usually no |
+| `org.hibernate.Session.createQuery(hql)` | Likely detected | Usually no |
+| `org.hibernate.Session.createNativeQuery(sql)` | Likely detected | Usually no |
+| Custom DAO method wrapping query execution | Unknown | Possibly yes |
+| Shared query helper / repository framework | Unknown | Possibly yes |
+| String-built HQL passed through internal abstraction | Unknown | Possibly yes |
+
+So for legacy JBoss, the question is probably less "Does CodeQL support JBoss?" and more:
+
+> Are the application's legacy DAO and repository wrappers modeled as sinks or flow steps?
+
 ## Recommended Next Work
 
 1. Add Panache `stream`, `find`, `list`, `count`, `delete`, and `update` coverage gradually.
@@ -396,3 +443,4 @@ Use this wording:
 3. Run baseline and modeled analysis against each example.
 4. Promote only validated low-noise model tuples to the organization-level model pack.
 5. Document known covered APIs and known gaps for Java 8, 17, 21, Quarkus 3, and legacy JBoss EAP.
+6. Build a separate legacy JBoss/EAP proof case before making coverage claims for that stack.
