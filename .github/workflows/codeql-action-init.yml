@@ -1,22 +1,27 @@
-name: CodeQL Action Init
+name: CodeQL Action Init Comparison
 
 on:
   workflow_dispatch:
   push:
     paths:
       - "src/**"
+      - "ql/**"
       - "pom.xml"
+      - "qlpack.yml"
+      - "codeql-pack.lock.yml"
       - ".github/workflows/codeql-action-init.yml"
 
 permissions:
   contents: read
-  security-events: write
+  security-events: read
 
 jobs:
-  analyze-with-codeql-action:
-    name: CodeQL Action (JDK ${{ matrix.java-version }}, release ${{ matrix.java-release }})
+  compare-with-codeql-init:
+    name: Init comparison (JDK ${{ matrix.java-version }}, release ${{ matrix.java-release }})
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.allow_failure }}
+    env:
+      CODEQL_RESULTS_DIR: codeql-init-results
     strategy:
       fail-fast: false
       matrix:
@@ -48,23 +53,287 @@ jobs:
           languages: java
           build-mode: manual
 
+      - name: Add CodeQL CLI to PATH
+        run: |
+          echo "$CODEQL_DIST" >> "$GITHUB_PATH"
+          "$CODEQL_DIST/codeql" --version
+
       - name: Build with Maven
+        id: build
+        continue-on-error: true
         run: mvn -B clean package -Dmaven.compiler.release=${{ matrix.java-release }}
 
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:java-jdk-${{ matrix.java-version }}-release-${{ matrix.java-release }}"
+      - name: Finalize CodeQL database
+        id: finalize_database
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: codeql database finalize "$CODEQL_EXTRACTOR_JAVA_WIP_DATABASE"
 
-      - name: Write matrix summary
-        if: always()
+      - name: Run baseline CodeQL analysis
+        id: baseline_analysis
+        if: steps.finalize_database.outcome == 'success'
+        continue-on-error: true
         run: |
-          {
-            echo "# CodeQL Action Init - JDK ${{ matrix.java-version }}, Release ${{ matrix.java-release }}"
-            echo
-            echo "Allowed failure: ${{ matrix.allow_failure && 'yes' || 'no' }}"
-            echo "Build JDK: ${{ matrix.java-version }}"
-            echo "Compiler release: ${{ matrix.java-release }}"
-            echo
-            echo "This workflow uses github/codeql-action/init and github/codeql-action/analyze."
-          } >> "$GITHUB_STEP_SUMMARY"
+          rm -rf "$CODEQL_RESULTS_DIR"
+          mkdir -p "$CODEQL_RESULTS_DIR"
+          codeql database analyze "$CODEQL_EXTRACTOR_JAVA_WIP_DATABASE" codeql/java-queries \
+            --format=sarif-latest \
+            --output="$CODEQL_RESULTS_DIR/baseline.sarif" \
+            --threads=0
+
+      - name: Run modeled CodeQL analysis
+        id: modeled_analysis
+        if: steps.finalize_database.outcome == 'success'
+        continue-on-error: true
+        run: |
+          codeql database analyze "$CODEQL_EXTRACTOR_JAVA_WIP_DATABASE" codeql/java-queries \
+            --model-packs=local/quarkus-models \
+            --additional-packs=. \
+            --rerun \
+            --format=sarif-latest \
+            --output="$CODEQL_RESULTS_DIR/modeled.sarif" \
+            --threads=0
+
+      - name: Compare SARIF results
+        if: always()
+        env:
+          JAVA_VERSION: ${{ matrix.java-version }}
+          JAVA_RELEASE: ${{ matrix.java-release }}
+          ALLOW_FAILURE: ${{ matrix.allow_failure }}
+          CODEQL_RESULTS_DIR: ${{ env.CODEQL_RESULTS_DIR }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          FINALIZE_OUTCOME: ${{ steps.finalize_database.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline_analysis.outcome }}
+          MODELED_OUTCOME: ${{ steps.modeled_analysis.outcome }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const resultsDirectory = process.env.CODEQL_RESULTS_DIR;
+          fs.mkdirSync(resultsDirectory, { recursive: true });
+
+          const baselinePath = `${resultsDirectory}/baseline.sarif`;
+          const modeledPath = `${resultsDirectory}/modeled.sarif`;
+          const reportPath = `${resultsDirectory}/codeql-init-comparison.md`;
+          const jsonPath = `${resultsDirectory}/codeql-init-comparison.json`;
+          const javaVersion = process.env.JAVA_VERSION;
+          const javaRelease = process.env.JAVA_RELEASE;
+          const allowFailure = process.env.ALLOW_FAILURE === 'true';
+          const buildOutcome = process.env.BUILD_OUTCOME || 'skipped';
+          const finalizeOutcome = process.env.FINALIZE_OUTCOME || 'skipped';
+          const baselineOutcome = process.env.BASELINE_OUTCOME || 'skipped';
+          const modeledOutcome = process.env.MODELED_OUTCOME || 'skipped';
+
+          function readSarif(path) {
+            return JSON.parse(fs.readFileSync(path, 'utf8'));
+          }
+
+          function locationOf(result) {
+            const physical = result.locations?.[0]?.physicalLocation;
+            const artifact = physical?.artifactLocation?.uri || 'unknown';
+            const region = physical?.region || {};
+            return {
+              file: artifact,
+              line: region.startLine || 1,
+              column: region.startColumn || 1
+            };
+          }
+
+          function resultKey(result) {
+            const location = locationOf(result);
+            return [
+              result.ruleId || result.rule?.id || 'unknown-rule',
+              location.file,
+              location.line,
+              location.column,
+              result.message?.text || ''
+            ].join('|');
+          }
+
+          function collectResults(sarif) {
+            return sarif.runs.flatMap((run) => run.results || []);
+          }
+
+          function escapeCommandValue(value) {
+            return String(value).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          }
+
+          function escapeCommandProperty(value) {
+            return escapeCommandValue(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
+          }
+
+          const canCompare = fs.existsSync(baselinePath) && fs.existsSync(modeledPath);
+          const baselineResults = canCompare ? collectResults(readSarif(baselinePath)) : [];
+          const modeledResults = canCompare ? collectResults(readSarif(modeledPath)) : [];
+          const baselineKeys = new Set(baselineResults.map(resultKey));
+          const modeledKeys = new Set(modeledResults.map(resultKey));
+          const newResults = modeledResults.filter((result) => !baselineKeys.has(resultKey(result)));
+          const removedResults = baselineResults.filter((result) => !modeledKeys.has(resultKey(result)));
+
+          const summary = {
+            javaVersion,
+            javaRelease,
+            allowFailure,
+            buildOutcome,
+            finalizeOutcome,
+            baselineOutcome,
+            modeledOutcome,
+            comparisonComplete: canCompare,
+            baselineCount: baselineResults.length,
+            modeledCount: modeledResults.length,
+            newModeledCount: newResults.length,
+            removedBaselineCount: removedResults.length,
+            newModeledResults: newResults.map((result) => ({ ruleId: result.ruleId || result.rule?.id || 'unknown-rule', message: result.message?.text || '', location: locationOf(result) })),
+            removedBaselineResults: removedResults.map((result) => ({ ruleId: result.ruleId || result.rule?.id || 'unknown-rule', message: result.message?.text || '', location: locationOf(result) }))
+          };
+
+          const lines = [
+            `# CodeQL Action Init Comparison - JDK ${javaVersion}, Release ${javaRelease}`,
+            '',
+            `Allowed failure: ${summary.allowFailure ? 'yes' : 'no'}`,
+            `Build: ${summary.buildOutcome}`,
+            `Database finalize: ${summary.finalizeOutcome}`,
+            `Baseline analysis: ${summary.baselineOutcome}`,
+            `Modeled analysis: ${summary.modeledOutcome}`,
+            `Comparison complete: ${summary.comparisonComplete ? 'yes' : 'no'}`,
+            '',
+            `Baseline results: ${summary.baselineCount}`,
+            `Modeled results: ${summary.modeledCount}`,
+            `New modeled results: ${summary.newModeledCount}`,
+            `Removed baseline results: ${summary.removedBaselineCount}`,
+            ''
+          ];
+
+          if (!summary.comparisonComplete) {
+            lines.push('The SARIF comparison could not be completed because one or both analysis outputs were not produced.', '');
+          } else if (summary.newModeledResults.length > 0) {
+            lines.push('## New modeled results', '');
+            for (const result of summary.newModeledResults) {
+              lines.push(`- ${result.ruleId} at ${result.location.file}:${result.location.line}:${result.location.column} - ${result.message}`);
+            }
+            lines.push('');
+          } else {
+            lines.push('No modeled-only results were found.', '');
+          }
+
+          if (summary.removedBaselineResults.length > 0) {
+            lines.push('## Removed baseline results', '');
+            for (const result of summary.removedBaselineResults) {
+              lines.push(`- ${result.ruleId} at ${result.location.file}:${result.location.line}:${result.location.column} - ${result.message}`);
+            }
+            lines.push('');
+          }
+
+          fs.writeFileSync(reportPath, `${lines.join('\n')}\n`);
+          fs.writeFileSync(jsonPath, `${JSON.stringify(summary, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+
+          const notice = `JDK ${javaVersion}, release ${javaRelease}: allowed failure ${summary.allowFailure ? 'yes' : 'no'}, build ${summary.buildOutcome}, finalize ${summary.finalizeOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, baseline results ${summary.baselineCount}, modeled results ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
+          console.log(`::notice title=${escapeCommandProperty(`CodeQL init comparison JDK ${javaVersion}`)}::${escapeCommandValue(notice)}`);
+
+          if (!summary.comparisonComplete) {
+            const annotationKind = summary.allowFailure ? 'notice' : 'error';
+            console.log(`::${annotationKind} title=${escapeCommandProperty(`CodeQL init comparison incomplete for JDK ${javaVersion}`)}::${escapeCommandValue('One or both SARIF files were not produced. Check the build, finalize, and analysis steps for this matrix entry.')}`);
+          }
+
+          for (const result of summary.newModeledResults) {
+            const location = result.location;
+            const message = `${result.ruleId}: ${result.message}`;
+            console.log(`::warning file=${escapeCommandProperty(location.file)},line=${location.line},col=${location.column},title=${escapeCommandProperty(`New modeled CodeQL init finding JDK ${javaVersion}`)}::${escapeCommandValue(message)}`);
+          }
+          NODE
+
+      - name: Upload CodeQL init SARIF and comparison artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: codeql-init-baseline-modeled-sarif-jdk-${{ matrix.java-version }}-release-${{ matrix.java-release }}
+          path: |
+            ${{ env.CODEQL_RESULTS_DIR }}/baseline.sarif
+            ${{ env.CODEQL_RESULTS_DIR }}/modeled.sarif
+            ${{ env.CODEQL_RESULTS_DIR }}/codeql-init-comparison.md
+            ${{ env.CODEQL_RESULTS_DIR }}/codeql-init-comparison.json
+          if-no-files-found: error
+
+      - name: Fail matrix entry when CodeQL init comparison failed
+        if: always() && !matrix.allow_failure && (steps.build.outcome != 'success' || steps.finalize_database.outcome != 'success' || steps.baseline_analysis.outcome != 'success' || steps.modeled_analysis.outcome != 'success')
+        run: exit 1
+
+  summarize-codeql-init-matrix:
+    name: Summarize CodeQL init matrix
+    runs-on: ubuntu-latest
+    needs: compare-with-codeql-init
+    if: always()
+
+    steps:
+      - name: Download CodeQL init comparison artifacts
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: --no-deprecation
+        with:
+          path: all-results
+
+      - name: Summarize CodeQL init matrix comparison
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          function findFiles(directory, fileName) {
+            if (!fs.existsSync(directory)) return [];
+            const matches = [];
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              const fullPath = path.join(directory, entry.name);
+              if (entry.isDirectory()) matches.push(...findFiles(fullPath, fileName));
+              else if (entry.name === fileName) matches.push(fullPath);
+            }
+            return matches;
+          }
+
+          function escapeCommandValue(value) {
+            return String(value).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          }
+
+          function escapeCommandProperty(value) {
+            return escapeCommandValue(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
+          }
+
+          const summaries = findFiles('all-results', 'codeql-init-comparison.json')
+            .map((file) => JSON.parse(fs.readFileSync(file, 'utf8')))
+            .sort((left, right) => Number(left.javaVersion) - Number(right.javaVersion) || Number(left.javaRelease) - Number(right.javaRelease));
+
+          const lines = [
+            '# CodeQL Action Init Matrix Summary',
+            '',
+            '| JDK | Release | Allowed failure | Build | Finalize | Baseline | Modeled | Compared | Baseline results | Modeled results | New modeled | Removed baseline |',
+            '| --- | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |'
+          ];
+
+          let hasFailure = summaries.length === 0;
+          if (summaries.length === 0) {
+            lines.push('| none | none | no | missing | missing | missing | missing | no | 0 | 0 | 0 | 0 |');
+            console.log(`::error title=${escapeCommandProperty('Missing CodeQL init comparison reports')}::${escapeCommandValue('No comparison artifacts were found. Check the matrix jobs before this summary job.')}`);
+          }
+
+          for (const summary of summaries) {
+            const javaVersion = String(summary.javaVersion);
+            const javaRelease = String(summary.javaRelease);
+            const failed = summary.buildOutcome !== 'success' || summary.finalizeOutcome !== 'success' || summary.baselineOutcome !== 'success' || summary.modeledOutcome !== 'success' || !summary.comparisonComplete;
+            hasFailure = hasFailure || (failed && !summary.allowFailure);
+            lines.push(`| ${javaVersion} | ${javaRelease} | ${summary.allowFailure ? 'yes' : 'no'} | ${summary.buildOutcome} | ${summary.finalizeOutcome} | ${summary.baselineOutcome} | ${summary.modeledOutcome} | ${summary.comparisonComplete ? 'yes' : 'no'} | ${summary.baselineCount} | ${summary.modeledCount} | ${summary.newModeledCount} | ${summary.removedBaselineCount} |`);
+
+            if (failed && summary.allowFailure) {
+              console.log(`::notice title=${escapeCommandProperty(`CodeQL init matrix allowed failure for JDK ${javaVersion}`)}::${escapeCommandValue(`Release ${javaRelease}: build ${summary.buildOutcome}, finalize ${summary.finalizeOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
+            } else if (failed) {
+              console.log(`::error title=${escapeCommandProperty(`CodeQL init matrix failed for JDK ${javaVersion}`)}::${escapeCommandValue(`Release ${javaRelease}: build ${summary.buildOutcome}, finalize ${summary.finalizeOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
+            } else {
+              console.log(`::notice title=${escapeCommandProperty(`CodeQL init matrix passed for JDK ${javaVersion}`)}::${escapeCommandValue(`Release ${javaRelease}: baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`)}`);
+            }
+          }
+
+          lines.push('');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+
+          if (hasFailure) process.exit(1);
+          NODE
