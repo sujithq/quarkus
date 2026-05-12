@@ -19,6 +19,7 @@ jobs:
     name: Baseline vs modeled CodeQL (JDK ${{ matrix.java-version }}, release ${{ matrix.java-release }})
     runs-on: ubuntu-latest
     env:
+      CODEQL_BUNDLE_VERSION: codeql-bundle-v2.25.4
       CODEQL_RESULTS_DIR: codeql-workflow-results
     strategy:
       fail-fast: false
@@ -50,7 +51,7 @@ jobs:
           rm -rf "$CODEQL_RESULTS_DIR"
           mkdir -p "$RUNNER_TEMP/codeql-bundle"
           curl -L -o "$RUNNER_TEMP/codeql-bundle.tar.gz" \
-            https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
+            "https://github.com/github/codeql-action/releases/download/$CODEQL_BUNDLE_VERSION/codeql-bundle-linux64.tar.gz"
           tar -xzf "$RUNNER_TEMP/codeql-bundle.tar.gz" -C "$RUNNER_TEMP/codeql-bundle"
           echo "$RUNNER_TEMP/codeql-bundle/codeql" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/codeql-bundle/codeql/codeql" --version
