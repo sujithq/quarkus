@@ -128,11 +128,15 @@ jobs:
             return sarif.runs.flatMap((run) => run.results || []);
           }
 
-          function escapeAnnotation(value) {
+          function escapeCommandValue(value) {
             return String(value)
               .replace(/%/g, '%25')
               .replace(/\r/g, '%0D')
-              .replace(/\n/g, '%0A')
+              .replace(/\n/g, '%0A');
+          }
+
+          function escapeCommandProperty(value) {
+            return escapeCommandValue(value)
               .replace(/:/g, '%3A')
               .replace(/,/g, '%2C');
           }
@@ -207,16 +211,16 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
 
           const notice = `Java ${javaVersion}: database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, baseline results ${summary.baselineCount}, modeled results ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
-          console.log(`::notice title=CodeQL comparison Java ${javaVersion}::${escapeAnnotation(notice)}`);
+          console.log(`::notice title=${escapeCommandProperty(`CodeQL comparison Java ${javaVersion}`)}::${escapeCommandValue(notice)}`);
 
           if (!summary.comparisonComplete) {
-            console.log(`::error title=CodeQL comparison incomplete for Java ${javaVersion}::${escapeAnnotation('One or both SARIF files were not produced. Check the database and analysis steps for this matrix entry.')}`);
+            console.log(`::error title=${escapeCommandProperty(`CodeQL comparison incomplete for Java ${javaVersion}`)}::${escapeCommandValue('One or both SARIF files were not produced. Check the database and analysis steps for this matrix entry.')}`);
           }
 
           for (const result of summary.newModeledResults) {
             const location = result.location;
             const message = `${result.ruleId}: ${result.message}`;
-            console.log(`::warning file=${escapeAnnotation(location.file)},line=${location.line},col=${location.column},title=New modeled CodeQL finding Java ${javaVersion}::${escapeAnnotation(message)}`);
+            console.log(`::warning file=${escapeCommandProperty(location.file)},line=${location.line},col=${location.column},title=${escapeCommandProperty(`New modeled CodeQL finding Java ${javaVersion}`)}::${escapeCommandValue(message)}`);
           }
           NODE
 
@@ -246,6 +250,8 @@ jobs:
       - name: Download CodeQL comparison artifacts
         uses: actions/download-artifact@v8
         continue-on-error: true
+        env:
+          NODE_OPTIONS: --no-deprecation
         with:
           path: all-results
 
@@ -272,11 +278,15 @@ jobs:
             return matches;
           }
 
-          function escapeAnnotation(value) {
+          function escapeCommandValue(value) {
             return String(value)
               .replace(/%/g, '%25')
               .replace(/\r/g, '%0D')
-              .replace(/\n/g, '%0A')
+              .replace(/\n/g, '%0A');
+          }
+
+          function escapeCommandProperty(value) {
+            return escapeCommandValue(value)
               .replace(/:/g, '%3A')
               .replace(/,/g, '%2C');
           }
@@ -300,7 +310,7 @@ jobs:
           let hasFailure = summaries.length === 0;
           if (summaries.length === 0) {
             lines.push('| none | missing | missing | missing | no | 0 | 0 | 0 | 0 |');
-            console.log(`::error title=Missing CodeQL comparison reports::${escapeAnnotation('No comparison artifacts were found. Check the matrix jobs before this summary job.')}`);
+            console.log(`::error title=${escapeCommandProperty('Missing CodeQL comparison reports')}::${escapeCommandValue('No comparison artifacts were found. Check the matrix jobs before this summary job.')}`);
           }
 
           for (const summary of summaries) {
@@ -315,9 +325,9 @@ jobs:
             lines.push(`| ${javaVersion} | ${summary.databaseOutcome} | ${summary.baselineOutcome} | ${summary.modeledOutcome} | ${summary.comparisonComplete ? 'yes' : 'no'} | ${summary.baselineCount} | ${summary.modeledCount} | ${summary.newModeledCount} | ${summary.removedBaselineCount} |`);
 
             if (failed) {
-              console.log(`::error title=CodeQL matrix failed for Java ${javaVersion}::${escapeAnnotation(`Database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
+              console.log(`::error title=${escapeCommandProperty(`CodeQL matrix failed for Java ${javaVersion}`)}::${escapeCommandValue(`Database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
             } else {
-              console.log(`::notice title=CodeQL matrix passed for Java ${javaVersion}::${escapeAnnotation(`Baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`)}`);
+              console.log(`::notice title=${escapeCommandProperty(`CodeQL matrix passed for Java ${javaVersion}`)}::${escapeCommandValue(`Baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`)}`);
             }
           }
 
