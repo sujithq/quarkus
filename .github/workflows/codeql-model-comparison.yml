@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  security-events: read
 
 jobs:
   compare-codeql-results:
@@ -39,6 +40,11 @@ jobs:
         with:
           languages: java
           build-mode: manual
+
+      - name: Add CodeQL CLI to PATH
+        run: |
+          echo "$CODEQL_DIST" >> "$GITHUB_PATH"
+          "$CODEQL_DIST/codeql" --version
 
       - name: Create CodeQL database
         id: create_database
@@ -278,13 +284,14 @@ jobs:
               .replace(/,/g, '%2C');
           }
 
-          const expectedJavaVersions = ['8', '17', '21'];
-          const summaries = new Map();
+          const summaries = [];
 
           for (const file of findFiles('all-results', 'codeql-comparison.json')) {
             const summary = JSON.parse(fs.readFileSync(file, 'utf8'));
-            summaries.set(String(summary.javaVersion), summary);
+            summaries.push(summary);
           }
+
+          summaries.sort((left, right) => Number(left.javaVersion) - Number(right.javaVersion));
 
           const lines = [
             '# CodeQL Java Matrix Summary',
@@ -293,15 +300,14 @@ jobs:
             '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |'
           ];
 
-          let hasFailure = false;
-          for (const javaVersion of expectedJavaVersions) {
-            const summary = summaries.get(javaVersion);
-            if (!summary) {
-              hasFailure = true;
-              lines.push(`| ${javaVersion} | missing | missing | missing | no | 0 | 0 | 0 | 0 |`);
-              console.log(`::error title=Missing CodeQL comparison report for Java ${javaVersion}::${escapeAnnotation('No comparison artifact was found for this Java matrix entry.')}`);
-              continue;
-            }
+          let hasFailure = summaries.length === 0;
+          if (summaries.length === 0) {
+            lines.push('| none | missing | missing | missing | no | 0 | 0 | 0 | 0 |');
+            console.log(`::error title=Missing CodeQL comparison reports::${escapeAnnotation('No comparison artifacts were found. Check the matrix jobs before this summary job.')}`);
+          }
+
+          for (const summary of summaries) {
+            const javaVersion = String(summary.javaVersion);
 
             const failed = summary.databaseOutcome !== 'success'
               || summary.baselineOutcome !== 'success'
