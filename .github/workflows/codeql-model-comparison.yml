@@ -1,0 +1,189 @@
+name: CodeQL Model Comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/**"
+      - "ql/**"
+      - "pom.xml"
+      - "qlpack.yml"
+      - "codeql-pack.lock.yml"
+      - ".github/workflows/codeql-model-comparison.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compare-codeql-results:
+    name: Baseline vs modeled CodeQL
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Set up CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java
+          build-mode: manual
+
+      - name: Create CodeQL database
+        run: |
+          codeql database create db-quarkus \
+            --overwrite \
+            --language=java \
+            --command="mvn -B clean package"
+
+      - name: Run baseline CodeQL analysis
+        run: |
+          mkdir -p results
+          codeql database analyze db-quarkus codeql/java-queries \
+            --format=sarif-latest \
+            --output=results/baseline.sarif \
+            --threads=0
+
+      - name: Run modeled CodeQL analysis
+        run: |
+          codeql database analyze db-quarkus codeql/java-queries \
+            --model-packs=local/quarkus-models \
+            --additional-packs=. \
+            --rerun \
+            --format=sarif-latest \
+            --output=results/modeled.sarif \
+            --threads=0
+
+      - name: Compare SARIF results
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const baselinePath = 'results/baseline.sarif';
+          const modeledPath = 'results/modeled.sarif';
+          const reportPath = 'results/codeql-comparison.md';
+          const jsonPath = 'results/codeql-comparison.json';
+
+          function readSarif(path) {
+            return JSON.parse(fs.readFileSync(path, 'utf8'));
+          }
+
+          function locationOf(result) {
+            const physical = result.locations?.[0]?.physicalLocation;
+            const artifact = physical?.artifactLocation?.uri || 'unknown';
+            const region = physical?.region || {};
+            return {
+              file: artifact,
+              line: region.startLine || 1,
+              column: region.startColumn || 1
+            };
+          }
+
+          function resultKey(result) {
+            const location = locationOf(result);
+            return [
+              result.ruleId || result.rule?.id || 'unknown-rule',
+              location.file,
+              location.line,
+              location.column,
+              result.message?.text || ''
+            ].join('|');
+          }
+
+          function collectResults(sarif) {
+            return sarif.runs.flatMap((run) => run.results || []);
+          }
+
+          function escapeAnnotation(value) {
+            return String(value)
+              .replace(/%/g, '%25')
+              .replace(/\r/g, '%0D')
+              .replace(/\n/g, '%0A')
+              .replace(/:/g, '%3A')
+              .replace(/,/g, '%2C');
+          }
+
+          const baselineResults = collectResults(readSarif(baselinePath));
+          const modeledResults = collectResults(readSarif(modeledPath));
+          const baselineKeys = new Set(baselineResults.map(resultKey));
+          const modeledKeys = new Set(modeledResults.map(resultKey));
+          const newResults = modeledResults.filter((result) => !baselineKeys.has(resultKey(result)));
+          const removedResults = baselineResults.filter((result) => !modeledKeys.has(resultKey(result)));
+
+          const summary = {
+            baselineCount: baselineResults.length,
+            modeledCount: modeledResults.length,
+            newModeledCount: newResults.length,
+            removedBaselineCount: removedResults.length,
+            newModeledResults: newResults.map((result) => ({
+              ruleId: result.ruleId || result.rule?.id || 'unknown-rule',
+              message: result.message?.text || '',
+              location: locationOf(result)
+            })),
+            removedBaselineResults: removedResults.map((result) => ({
+              ruleId: result.ruleId || result.rule?.id || 'unknown-rule',
+              message: result.message?.text || '',
+              location: locationOf(result)
+            }))
+          };
+
+          const lines = [
+            '# CodeQL Baseline vs Modeled Comparison',
+            '',
+            `Baseline results: ${summary.baselineCount}`,
+            `Modeled results: ${summary.modeledCount}`,
+            `New modeled results: ${summary.newModeledCount}`,
+            `Removed baseline results: ${summary.removedBaselineCount}`,
+            ''
+          ];
+
+          if (summary.newModeledResults.length > 0) {
+            lines.push('## New modeled results', '');
+            for (const result of summary.newModeledResults) {
+              lines.push(`- ${result.ruleId} at ${result.location.file}:${result.location.line}:${result.location.column} - ${result.message}`);
+            }
+            lines.push('');
+          } else {
+            lines.push('No modeled-only results were found.', '');
+          }
+
+          if (summary.removedBaselineResults.length > 0) {
+            lines.push('## Removed baseline results', '');
+            for (const result of summary.removedBaselineResults) {
+              lines.push(`- ${result.ruleId} at ${result.location.file}:${result.location.line}:${result.location.column} - ${result.message}`);
+            }
+            lines.push('');
+          }
+
+          fs.writeFileSync(reportPath, `${lines.join('\n')}\n`);
+          fs.writeFileSync(jsonPath, `${JSON.stringify(summary, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+
+          const notice = `Baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
+          console.log(`::notice title=CodeQL comparison::${escapeAnnotation(notice)}`);
+
+          for (const result of summary.newModeledResults) {
+            const location = result.location;
+            const message = `${result.ruleId}: ${result.message}`;
+            console.log(`::warning file=${escapeAnnotation(location.file)},line=${location.line},col=${location.column},title=New modeled CodeQL finding::${escapeAnnotation(message)}`);
+          }
+          NODE
+
+      - name: Upload CodeQL SARIF and comparison artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: codeql-baseline-modeled-sarif
+          path: |
+            results/baseline.sarif
+            results/modeled.sarif
+            results/codeql-comparison.md
+            results/codeql-comparison.json
+          if-no-files-found: error
