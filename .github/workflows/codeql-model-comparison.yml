@@ -50,6 +50,7 @@ jobs:
         id: create_database
         continue-on-error: true
         run: |
+          unset CODEQL_ACTION_INIT_HAS_RUN CODEQL_ACTION_ANALYSIS_KEY CODEQL_EXTRACTOR_JAVA_WIP_DATABASE CODEQL_EXTRACTOR_JAVA_DIAGNOSTIC_DIR CODEQL_EXTRACTOR_JAVA_LOG_DIR CODEQL_EXTRACTOR_JAVA_SCRATCH_DIR CODEQL_EXTRACTOR_JAVA_TRAP_DIR CODEQL_EXTRACTOR_JAVA_SOURCE_ARCHIVE_DIR CODEQL_TRACER_LOG CODEQL_TRACER_DIAGNOSTICS_DIR CODEQL_TRACER_LANGUAGES LD_PRELOAD SEMMLE_PRELOAD_libtrace SEMMLE_PRELOAD_libtrace32 SEMMLE_PRELOAD_libtrace64
           codeql database create db-quarkus \
             --overwrite \
             --language=java \
@@ -60,6 +61,7 @@ jobs:
         if: steps.create_database.outcome == 'success'
         continue-on-error: true
         run: |
+          unset CODEQL_ACTION_INIT_HAS_RUN CODEQL_ACTION_ANALYSIS_KEY CODEQL_EXTRACTOR_JAVA_WIP_DATABASE CODEQL_EXTRACTOR_JAVA_DIAGNOSTIC_DIR CODEQL_EXTRACTOR_JAVA_LOG_DIR CODEQL_EXTRACTOR_JAVA_SCRATCH_DIR CODEQL_EXTRACTOR_JAVA_TRAP_DIR CODEQL_EXTRACTOR_JAVA_SOURCE_ARCHIVE_DIR CODEQL_TRACER_LOG CODEQL_TRACER_DIAGNOSTICS_DIR CODEQL_TRACER_LANGUAGES LD_PRELOAD SEMMLE_PRELOAD_libtrace SEMMLE_PRELOAD_libtrace32 SEMMLE_PRELOAD_libtrace64
           mkdir -p results
           codeql database analyze db-quarkus codeql/java-queries \
             --format=sarif-latest \
@@ -71,6 +73,7 @@ jobs:
         if: steps.create_database.outcome == 'success'
         continue-on-error: true
         run: |
+          unset CODEQL_ACTION_INIT_HAS_RUN CODEQL_ACTION_ANALYSIS_KEY CODEQL_EXTRACTOR_JAVA_WIP_DATABASE CODEQL_EXTRACTOR_JAVA_DIAGNOSTIC_DIR CODEQL_EXTRACTOR_JAVA_LOG_DIR CODEQL_EXTRACTOR_JAVA_SCRATCH_DIR CODEQL_EXTRACTOR_JAVA_TRAP_DIR CODEQL_EXTRACTOR_JAVA_SOURCE_ARCHIVE_DIR CODEQL_TRACER_LOG CODEQL_TRACER_DIAGNOSTICS_DIR CODEQL_TRACER_LANGUAGES LD_PRELOAD SEMMLE_PRELOAD_libtrace SEMMLE_PRELOAD_libtrace32 SEMMLE_PRELOAD_libtrace64
           codeql database analyze db-quarkus codeql/java-queries \
             --model-packs=local/quarkus-models \
             --additional-packs=. \
