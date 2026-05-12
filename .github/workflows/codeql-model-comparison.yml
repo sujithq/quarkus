@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  security-events: read
 
 jobs:
   compare-codeql-results:
@@ -35,22 +34,19 @@ jobs:
           java-version: ${{ matrix.java-version }}
           cache: maven
 
-      - name: Set up CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: java
-          build-mode: manual
-
-      - name: Add CodeQL CLI to PATH
+      - name: Install CodeQL CLI
         run: |
-          echo "$CODEQL_DIST" >> "$GITHUB_PATH"
-          "$CODEQL_DIST/codeql" --version
+          mkdir -p "$RUNNER_TEMP/codeql-bundle"
+          curl -L -o "$RUNNER_TEMP/codeql-bundle.tar.gz" \
+            https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
+          tar -xzf "$RUNNER_TEMP/codeql-bundle.tar.gz" -C "$RUNNER_TEMP/codeql-bundle"
+          echo "$RUNNER_TEMP/codeql-bundle/codeql" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/codeql-bundle/codeql/codeql" --version
 
       - name: Create CodeQL database
         id: create_database
         continue-on-error: true
         run: |
-          unset CODEQL_ACTION_INIT_HAS_RUN CODEQL_ACTION_ANALYSIS_KEY CODEQL_EXTRACTOR_JAVA_WIP_DATABASE CODEQL_EXTRACTOR_JAVA_DIAGNOSTIC_DIR CODEQL_EXTRACTOR_JAVA_LOG_DIR CODEQL_EXTRACTOR_JAVA_SCRATCH_DIR CODEQL_EXTRACTOR_JAVA_TRAP_DIR CODEQL_EXTRACTOR_JAVA_SOURCE_ARCHIVE_DIR CODEQL_TRACER_LOG CODEQL_TRACER_DIAGNOSTICS_DIR CODEQL_TRACER_LANGUAGES LD_PRELOAD SEMMLE_PRELOAD_libtrace SEMMLE_PRELOAD_libtrace32 SEMMLE_PRELOAD_libtrace64
           codeql database create db-quarkus \
             --overwrite \
             --language=java \
@@ -61,7 +57,6 @@ jobs:
         if: steps.create_database.outcome == 'success'
         continue-on-error: true
         run: |
-          unset CODEQL_ACTION_INIT_HAS_RUN CODEQL_ACTION_ANALYSIS_KEY CODEQL_EXTRACTOR_JAVA_WIP_DATABASE CODEQL_EXTRACTOR_JAVA_DIAGNOSTIC_DIR CODEQL_EXTRACTOR_JAVA_LOG_DIR CODEQL_EXTRACTOR_JAVA_SCRATCH_DIR CODEQL_EXTRACTOR_JAVA_TRAP_DIR CODEQL_EXTRACTOR_JAVA_SOURCE_ARCHIVE_DIR CODEQL_TRACER_LOG CODEQL_TRACER_DIAGNOSTICS_DIR CODEQL_TRACER_LANGUAGES LD_PRELOAD SEMMLE_PRELOAD_libtrace SEMMLE_PRELOAD_libtrace32 SEMMLE_PRELOAD_libtrace64
           mkdir -p results
           codeql database analyze db-quarkus codeql/java-queries \
             --format=sarif-latest \
@@ -73,7 +68,6 @@ jobs:
         if: steps.create_database.outcome == 'success'
         continue-on-error: true
         run: |
-          unset CODEQL_ACTION_INIT_HAS_RUN CODEQL_ACTION_ANALYSIS_KEY CODEQL_EXTRACTOR_JAVA_WIP_DATABASE CODEQL_EXTRACTOR_JAVA_DIAGNOSTIC_DIR CODEQL_EXTRACTOR_JAVA_LOG_DIR CODEQL_EXTRACTOR_JAVA_SCRATCH_DIR CODEQL_EXTRACTOR_JAVA_TRAP_DIR CODEQL_EXTRACTOR_JAVA_SOURCE_ARCHIVE_DIR CODEQL_TRACER_LOG CODEQL_TRACER_DIAGNOSTICS_DIR CODEQL_TRACER_LANGUAGES LD_PRELOAD SEMMLE_PRELOAD_libtrace SEMMLE_PRELOAD_libtrace32 SEMMLE_PRELOAD_libtrace64
           codeql database analyze db-quarkus codeql/java-queries \
             --model-packs=local/quarkus-models \
             --additional-packs=. \
