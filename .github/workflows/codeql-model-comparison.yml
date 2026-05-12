@@ -31,7 +31,7 @@ jobs:
             java-release: "17"
             allow_failure: false
           - java-version: "21"
-            java-release: "17"
+            java-release: "21"
             allow_failure: false
 
     steps:
