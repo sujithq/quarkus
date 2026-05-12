@@ -18,6 +18,8 @@ jobs:
   compare-codeql-results:
     name: Baseline vs modeled CodeQL (JDK ${{ matrix.java-version }}, release ${{ matrix.java-release }})
     runs-on: ubuntu-latest
+    env:
+      CODEQL_RESULTS_DIR: codeql-workflow-results
     strategy:
       fail-fast: false
       matrix:
@@ -45,6 +47,7 @@ jobs:
 
       - name: Install CodeQL CLI
         run: |
+          rm -rf "$CODEQL_RESULTS_DIR"
           mkdir -p "$RUNNER_TEMP/codeql-bundle"
           curl -L -o "$RUNNER_TEMP/codeql-bundle.tar.gz" \
             https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
@@ -66,10 +69,10 @@ jobs:
         if: steps.create_database.outcome == 'success'
         continue-on-error: true
         run: |
-          mkdir -p results
+          mkdir -p "$CODEQL_RESULTS_DIR"
           codeql database analyze db-quarkus codeql/java-queries \
             --format=sarif-latest \
-            --output=results/baseline.sarif \
+            --output="$CODEQL_RESULTS_DIR/baseline.sarif" \
             --threads=0
 
       - name: Run modeled CodeQL analysis
@@ -82,7 +85,7 @@ jobs:
             --additional-packs=. \
             --rerun \
             --format=sarif-latest \
-            --output=results/modeled.sarif \
+            --output="$CODEQL_RESULTS_DIR/modeled.sarif" \
             --threads=0
 
       - name: Compare SARIF results
@@ -91,6 +94,7 @@ jobs:
           JAVA_VERSION: ${{ matrix.java-version }}
           JAVA_RELEASE: ${{ matrix.java-release }}
           ALLOW_FAILURE: ${{ matrix.allow_failure }}
+          CODEQL_RESULTS_DIR: ${{ env.CODEQL_RESULTS_DIR }}
           DATABASE_OUTCOME: ${{ steps.create_database.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline_analysis.outcome }}
           MODELED_OUTCOME: ${{ steps.modeled_analysis.outcome }}
@@ -98,12 +102,13 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
 
-          fs.mkdirSync('results', { recursive: true });
+          const resultsDirectory = process.env.CODEQL_RESULTS_DIR;
+          fs.mkdirSync(resultsDirectory, { recursive: true });
 
-          const baselinePath = 'results/baseline.sarif';
-          const modeledPath = 'results/modeled.sarif';
-          const reportPath = 'results/codeql-comparison.md';
-          const jsonPath = 'results/codeql-comparison.json';
+          const baselinePath = `${resultsDirectory}/baseline.sarif`;
+          const modeledPath = `${resultsDirectory}/modeled.sarif`;
+          const reportPath = `${resultsDirectory}/codeql-comparison.md`;
+          const jsonPath = `${resultsDirectory}/codeql-comparison.json`;
           const javaVersion = process.env.JAVA_VERSION;
           const javaRelease = process.env.JAVA_RELEASE;
           const allowFailure = process.env.ALLOW_FAILURE === 'true';
@@ -247,10 +252,10 @@ jobs:
         with:
           name: codeql-baseline-modeled-sarif-jdk-${{ matrix.java-version }}-release-${{ matrix.java-release }}
           path: |
-            results/baseline.sarif
-            results/modeled.sarif
-            results/codeql-comparison.md
-            results/codeql-comparison.json
+            ${{ env.CODEQL_RESULTS_DIR }}/baseline.sarif
+            ${{ env.CODEQL_RESULTS_DIR }}/modeled.sarif
+            ${{ env.CODEQL_RESULTS_DIR }}/codeql-comparison.md
+            ${{ env.CODEQL_RESULTS_DIR }}/codeql-comparison.json
           if-no-files-found: error
 
       - name: Fail matrix entry when CodeQL comparison failed
