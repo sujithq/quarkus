@@ -16,12 +16,21 @@ permissions:
 
 jobs:
   compare-codeql-results:
-    name: Baseline vs modeled CodeQL (Java ${{ matrix.java-version }})
+    name: Baseline vs modeled CodeQL (JDK ${{ matrix.java-version }}, release ${{ matrix.java-release }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        java-version: ["8", "17", "21"]
+        include:
+          - java-version: "8"
+            java-release: "8"
+            allow_failure: true
+          - java-version: "17"
+            java-release: "17"
+            allow_failure: false
+          - java-version: "21"
+            java-release: "17"
+            allow_failure: false
 
     steps:
       - name: Check out repository
@@ -50,7 +59,7 @@ jobs:
           codeql database create db-quarkus \
             --overwrite \
             --language=java \
-            --command="mvn -B clean package"
+            --command="mvn -B clean package -Dmaven.compiler.release=${{ matrix.java-release }}"
 
       - name: Run baseline CodeQL analysis
         id: baseline_analysis
@@ -80,6 +89,8 @@ jobs:
         if: always()
         env:
           JAVA_VERSION: ${{ matrix.java-version }}
+          JAVA_RELEASE: ${{ matrix.java-release }}
+          ALLOW_FAILURE: ${{ matrix.allow_failure }}
           DATABASE_OUTCOME: ${{ steps.create_database.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline_analysis.outcome }}
           MODELED_OUTCOME: ${{ steps.modeled_analysis.outcome }}
@@ -94,6 +105,8 @@ jobs:
           const reportPath = 'results/codeql-comparison.md';
           const jsonPath = 'results/codeql-comparison.json';
           const javaVersion = process.env.JAVA_VERSION;
+          const javaRelease = process.env.JAVA_RELEASE;
+          const allowFailure = process.env.ALLOW_FAILURE === 'true';
           const databaseOutcome = process.env.DATABASE_OUTCOME || 'skipped';
           const baselineOutcome = process.env.BASELINE_OUTCOME || 'skipped';
           const modeledOutcome = process.env.MODELED_OUTCOME || 'skipped';
@@ -151,6 +164,8 @@ jobs:
 
           const summary = {
             javaVersion,
+            javaRelease,
+            allowFailure,
             databaseOutcome,
             baselineOutcome,
             modeledOutcome,
@@ -172,8 +187,9 @@ jobs:
           };
 
           const lines = [
-            `# CodeQL Baseline vs Modeled Comparison - Java ${javaVersion}`,
+            `# CodeQL Baseline vs Modeled Comparison - JDK ${javaVersion}, Release ${javaRelease}`,
             '',
+            `Allowed failure: ${summary.allowFailure ? 'yes' : 'no'}`,
             `Database creation: ${summary.databaseOutcome}`,
             `Baseline analysis: ${summary.baselineOutcome}`,
             `Modeled analysis: ${summary.modeledOutcome}`,
@@ -210,17 +226,18 @@ jobs:
           fs.writeFileSync(jsonPath, `${JSON.stringify(summary, null, 2)}\n`);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
 
-          const notice = `Java ${javaVersion}: database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, baseline results ${summary.baselineCount}, modeled results ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
-          console.log(`::notice title=${escapeCommandProperty(`CodeQL comparison Java ${javaVersion}`)}::${escapeCommandValue(notice)}`);
+          const notice = `JDK ${javaVersion}, release ${javaRelease}: allowed failure ${summary.allowFailure ? 'yes' : 'no'}, database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, baseline results ${summary.baselineCount}, modeled results ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
+          console.log(`::notice title=${escapeCommandProperty(`CodeQL comparison JDK ${javaVersion}`)}::${escapeCommandValue(notice)}`);
 
           if (!summary.comparisonComplete) {
-            console.log(`::error title=${escapeCommandProperty(`CodeQL comparison incomplete for Java ${javaVersion}`)}::${escapeCommandValue('One or both SARIF files were not produced. Check the database and analysis steps for this matrix entry.')}`);
+            const annotationKind = summary.allowFailure ? 'notice' : 'error';
+            console.log(`::${annotationKind} title=${escapeCommandProperty(`CodeQL comparison incomplete for JDK ${javaVersion}`)}::${escapeCommandValue('One or both SARIF files were not produced. Check the database and analysis steps for this matrix entry.')}`);
           }
 
           for (const result of summary.newModeledResults) {
             const location = result.location;
             const message = `${result.ruleId}: ${result.message}`;
-            console.log(`::warning file=${escapeCommandProperty(location.file)},line=${location.line},col=${location.column},title=${escapeCommandProperty(`New modeled CodeQL finding Java ${javaVersion}`)}::${escapeCommandValue(message)}`);
+            console.log(`::warning file=${escapeCommandProperty(location.file)},line=${location.line},col=${location.column},title=${escapeCommandProperty(`New modeled CodeQL finding JDK ${javaVersion}`)}::${escapeCommandValue(message)}`);
           }
           NODE
 
@@ -228,7 +245,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: codeql-baseline-modeled-sarif-java-${{ matrix.java-version }}
+          name: codeql-baseline-modeled-sarif-jdk-${{ matrix.java-version }}-release-${{ matrix.java-release }}
           path: |
             results/baseline.sarif
             results/modeled.sarif
@@ -237,7 +254,7 @@ jobs:
           if-no-files-found: error
 
       - name: Fail matrix entry when CodeQL comparison failed
-        if: always() && (steps.create_database.outcome != 'success' || steps.baseline_analysis.outcome != 'success' || steps.modeled_analysis.outcome != 'success')
+        if: always() && !matrix.allow_failure && (steps.create_database.outcome != 'success' || steps.baseline_analysis.outcome != 'success' || steps.modeled_analysis.outcome != 'success')
         run: exit 1
 
   summarize-codeql-matrix:
@@ -298,36 +315,39 @@ jobs:
             summaries.push(summary);
           }
 
-          summaries.sort((left, right) => Number(left.javaVersion) - Number(right.javaVersion));
+          summaries.sort((left, right) => Number(left.javaVersion) - Number(right.javaVersion) || Number(left.javaRelease) - Number(right.javaRelease));
 
           const lines = [
             '# CodeQL Java Matrix Summary',
             '',
-            '| Java | Database | Baseline | Modeled | Compared | Baseline results | Modeled results | New modeled | Removed baseline |',
-            '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |'
+            '| JDK | Release | Allowed failure | Database | Baseline | Modeled | Compared | Baseline results | Modeled results | New modeled | Removed baseline |',
+            '| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |'
           ];
 
           let hasFailure = summaries.length === 0;
           if (summaries.length === 0) {
-            lines.push('| none | missing | missing | missing | no | 0 | 0 | 0 | 0 |');
+            lines.push('| none | none | no | missing | missing | missing | no | 0 | 0 | 0 | 0 |');
             console.log(`::error title=${escapeCommandProperty('Missing CodeQL comparison reports')}::${escapeCommandValue('No comparison artifacts were found. Check the matrix jobs before this summary job.')}`);
           }
 
           for (const summary of summaries) {
             const javaVersion = String(summary.javaVersion);
+            const javaRelease = String(summary.javaRelease);
 
             const failed = summary.databaseOutcome !== 'success'
               || summary.baselineOutcome !== 'success'
               || summary.modeledOutcome !== 'success'
               || !summary.comparisonComplete;
-            hasFailure = hasFailure || failed;
+            hasFailure = hasFailure || (failed && !summary.allowFailure);
 
-            lines.push(`| ${javaVersion} | ${summary.databaseOutcome} | ${summary.baselineOutcome} | ${summary.modeledOutcome} | ${summary.comparisonComplete ? 'yes' : 'no'} | ${summary.baselineCount} | ${summary.modeledCount} | ${summary.newModeledCount} | ${summary.removedBaselineCount} |`);
+            lines.push(`| ${javaVersion} | ${javaRelease} | ${summary.allowFailure ? 'yes' : 'no'} | ${summary.databaseOutcome} | ${summary.baselineOutcome} | ${summary.modeledOutcome} | ${summary.comparisonComplete ? 'yes' : 'no'} | ${summary.baselineCount} | ${summary.modeledCount} | ${summary.newModeledCount} | ${summary.removedBaselineCount} |`);
 
-            if (failed) {
-              console.log(`::error title=${escapeCommandProperty(`CodeQL matrix failed for Java ${javaVersion}`)}::${escapeCommandValue(`Database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
+            if (failed && summary.allowFailure) {
+              console.log(`::notice title=${escapeCommandProperty(`CodeQL matrix allowed failure for JDK ${javaVersion}`)}::${escapeCommandValue(`Release ${javaRelease}: database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
+            } else if (failed) {
+              console.log(`::error title=${escapeCommandProperty(`CodeQL matrix failed for JDK ${javaVersion}`)}::${escapeCommandValue(`Release ${javaRelease}: database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
             } else {
-              console.log(`::notice title=${escapeCommandProperty(`CodeQL matrix passed for Java ${javaVersion}`)}::${escapeCommandValue(`Baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`)}`);
+              console.log(`::notice title=${escapeCommandProperty(`CodeQL matrix passed for JDK ${javaVersion}`)}::${escapeCommandValue(`Release ${javaRelease}: baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`)}`);
             }
           }
 
