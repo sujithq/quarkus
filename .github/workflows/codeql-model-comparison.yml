@@ -16,8 +16,12 @@ permissions:
 
 jobs:
   compare-codeql-results:
-    name: Baseline vs modeled CodeQL
+    name: Baseline vs modeled CodeQL (Java ${{ matrix.java-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17"] # ["8", "17", "21"]
 
     steps:
       - name: Check out repository
@@ -27,7 +31,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ matrix.java-version }}
           cache: maven
 
       - name: Set up CodeQL
@@ -37,6 +41,8 @@ jobs:
           build-mode: manual
 
       - name: Create CodeQL database
+        id: create_database
+        continue-on-error: true
         run: |
           codeql database create db-quarkus \
             --overwrite \
@@ -44,6 +50,9 @@ jobs:
             --command="mvn -B clean package"
 
       - name: Run baseline CodeQL analysis
+        id: baseline_analysis
+        if: steps.create_database.outcome == 'success'
+        continue-on-error: true
         run: |
           mkdir -p results
           codeql database analyze db-quarkus codeql/java-queries \
@@ -52,6 +61,9 @@ jobs:
             --threads=0
 
       - name: Run modeled CodeQL analysis
+        id: modeled_analysis
+        if: steps.create_database.outcome == 'success'
+        continue-on-error: true
         run: |
           codeql database analyze db-quarkus codeql/java-queries \
             --model-packs=local/quarkus-models \
@@ -62,14 +74,26 @@ jobs:
             --threads=0
 
       - name: Compare SARIF results
+        if: always()
+        env:
+          JAVA_VERSION: ${{ matrix.java-version }}
+          DATABASE_OUTCOME: ${{ steps.create_database.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline_analysis.outcome }}
+          MODELED_OUTCOME: ${{ steps.modeled_analysis.outcome }}
         run: |
           node <<'NODE'
           const fs = require('fs');
+
+          fs.mkdirSync('results', { recursive: true });
 
           const baselinePath = 'results/baseline.sarif';
           const modeledPath = 'results/modeled.sarif';
           const reportPath = 'results/codeql-comparison.md';
           const jsonPath = 'results/codeql-comparison.json';
+          const javaVersion = process.env.JAVA_VERSION;
+          const databaseOutcome = process.env.DATABASE_OUTCOME || 'skipped';
+          const baselineOutcome = process.env.BASELINE_OUTCOME || 'skipped';
+          const modeledOutcome = process.env.MODELED_OUTCOME || 'skipped';
 
           function readSarif(path) {
             return JSON.parse(fs.readFileSync(path, 'utf8'));
@@ -110,14 +134,20 @@ jobs:
               .replace(/,/g, '%2C');
           }
 
-          const baselineResults = collectResults(readSarif(baselinePath));
-          const modeledResults = collectResults(readSarif(modeledPath));
+          const canCompare = fs.existsSync(baselinePath) && fs.existsSync(modeledPath);
+          const baselineResults = canCompare ? collectResults(readSarif(baselinePath)) : [];
+          const modeledResults = canCompare ? collectResults(readSarif(modeledPath)) : [];
           const baselineKeys = new Set(baselineResults.map(resultKey));
           const modeledKeys = new Set(modeledResults.map(resultKey));
           const newResults = modeledResults.filter((result) => !baselineKeys.has(resultKey(result)));
           const removedResults = baselineResults.filter((result) => !modeledKeys.has(resultKey(result)));
 
           const summary = {
+            javaVersion,
+            databaseOutcome,
+            baselineOutcome,
+            modeledOutcome,
+            comparisonComplete: canCompare,
             baselineCount: baselineResults.length,
             modeledCount: modeledResults.length,
             newModeledCount: newResults.length,
@@ -135,7 +165,12 @@ jobs:
           };
 
           const lines = [
-            '# CodeQL Baseline vs Modeled Comparison',
+            `# CodeQL Baseline vs Modeled Comparison - Java ${javaVersion}`,
+            '',
+            `Database creation: ${summary.databaseOutcome}`,
+            `Baseline analysis: ${summary.baselineOutcome}`,
+            `Modeled analysis: ${summary.modeledOutcome}`,
+            `Comparison complete: ${summary.comparisonComplete ? 'yes' : 'no'}`,
             '',
             `Baseline results: ${summary.baselineCount}`,
             `Modeled results: ${summary.modeledCount}`,
@@ -144,7 +179,9 @@ jobs:
             ''
           ];
 
-          if (summary.newModeledResults.length > 0) {
+          if (!summary.comparisonComplete) {
+            lines.push('The SARIF comparison could not be completed because one or both analysis outputs were not produced.', '');
+          } else if (summary.newModeledResults.length > 0) {
             lines.push('## New modeled results', '');
             for (const result of summary.newModeledResults) {
               lines.push(`- ${result.ruleId} at ${result.location.file}:${result.location.line}:${result.location.column} - ${result.message}`);
@@ -166,13 +203,17 @@ jobs:
           fs.writeFileSync(jsonPath, `${JSON.stringify(summary, null, 2)}\n`);
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
 
-          const notice = `Baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
-          console.log(`::notice title=CodeQL comparison::${escapeAnnotation(notice)}`);
+          const notice = `Java ${javaVersion}: database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, baseline results ${summary.baselineCount}, modeled results ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`;
+          console.log(`::notice title=CodeQL comparison Java ${javaVersion}::${escapeAnnotation(notice)}`);
+
+          if (!summary.comparisonComplete) {
+            console.log(`::error title=CodeQL comparison incomplete for Java ${javaVersion}::${escapeAnnotation('One or both SARIF files were not produced. Check the database and analysis steps for this matrix entry.')}`);
+          }
 
           for (const result of summary.newModeledResults) {
             const location = result.location;
             const message = `${result.ruleId}: ${result.message}`;
-            console.log(`::warning file=${escapeAnnotation(location.file)},line=${location.line},col=${location.column},title=New modeled CodeQL finding::${escapeAnnotation(message)}`);
+            console.log(`::warning file=${escapeAnnotation(location.file)},line=${location.line},col=${location.column},title=New modeled CodeQL finding Java ${javaVersion}::${escapeAnnotation(message)}`);
           }
           NODE
 
@@ -180,10 +221,107 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: codeql-baseline-modeled-sarif
+          name: codeql-baseline-modeled-sarif-java-${{ matrix.java-version }}
           path: |
             results/baseline.sarif
             results/modeled.sarif
             results/codeql-comparison.md
             results/codeql-comparison.json
           if-no-files-found: error
+
+      - name: Fail matrix entry when CodeQL comparison failed
+        if: always() && (steps.create_database.outcome != 'success' || steps.baseline_analysis.outcome != 'success' || steps.modeled_analysis.outcome != 'success')
+        run: exit 1
+
+  summarize-codeql-matrix:
+    name: Summarize CodeQL Java matrix
+    runs-on: ubuntu-latest
+    needs: compare-codeql-results
+    if: always()
+
+    steps:
+      - name: Download CodeQL comparison artifacts
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          path: all-results
+
+      - name: Summarize Java matrix comparison
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          function findFiles(directory, fileName) {
+            if (!fs.existsSync(directory)) {
+              return [];
+            }
+
+            const matches = [];
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              const fullPath = path.join(directory, entry.name);
+              if (entry.isDirectory()) {
+                matches.push(...findFiles(fullPath, fileName));
+              } else if (entry.name === fileName) {
+                matches.push(fullPath);
+              }
+            }
+            return matches;
+          }
+
+          function escapeAnnotation(value) {
+            return String(value)
+              .replace(/%/g, '%25')
+              .replace(/\r/g, '%0D')
+              .replace(/\n/g, '%0A')
+              .replace(/:/g, '%3A')
+              .replace(/,/g, '%2C');
+          }
+
+          const expectedJavaVersions = ['8', '17', '21'];
+          const summaries = new Map();
+
+          for (const file of findFiles('all-results', 'codeql-comparison.json')) {
+            const summary = JSON.parse(fs.readFileSync(file, 'utf8'));
+            summaries.set(String(summary.javaVersion), summary);
+          }
+
+          const lines = [
+            '# CodeQL Java Matrix Summary',
+            '',
+            '| Java | Database | Baseline | Modeled | Compared | Baseline results | Modeled results | New modeled | Removed baseline |',
+            '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |'
+          ];
+
+          let hasFailure = false;
+          for (const javaVersion of expectedJavaVersions) {
+            const summary = summaries.get(javaVersion);
+            if (!summary) {
+              hasFailure = true;
+              lines.push(`| ${javaVersion} | missing | missing | missing | no | 0 | 0 | 0 | 0 |`);
+              console.log(`::error title=Missing CodeQL comparison report for Java ${javaVersion}::${escapeAnnotation('No comparison artifact was found for this Java matrix entry.')}`);
+              continue;
+            }
+
+            const failed = summary.databaseOutcome !== 'success'
+              || summary.baselineOutcome !== 'success'
+              || summary.modeledOutcome !== 'success'
+              || !summary.comparisonComplete;
+            hasFailure = hasFailure || failed;
+
+            lines.push(`| ${javaVersion} | ${summary.databaseOutcome} | ${summary.baselineOutcome} | ${summary.modeledOutcome} | ${summary.comparisonComplete ? 'yes' : 'no'} | ${summary.baselineCount} | ${summary.modeledCount} | ${summary.newModeledCount} | ${summary.removedBaselineCount} |`);
+
+            if (failed) {
+              console.log(`::error title=CodeQL matrix failed for Java ${javaVersion}::${escapeAnnotation(`Database ${summary.databaseOutcome}, baseline ${summary.baselineOutcome}, modeled ${summary.modeledOutcome}, comparison complete ${summary.comparisonComplete ? 'yes' : 'no'}.`)}`);
+            } else {
+              console.log(`::notice title=CodeQL matrix passed for Java ${javaVersion}::${escapeAnnotation(`Baseline ${summary.baselineCount}, modeled ${summary.modeledCount}, new modeled ${summary.newModeledCount}, removed baseline ${summary.removedBaselineCount}.`)}`);
+            }
+          }
+
+          lines.push('');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+
+          if (hasFailure) {
+            process.exit(1);
+          }
+          NODE
