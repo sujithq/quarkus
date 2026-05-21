@@ -31,13 +31,20 @@ jobs:
         run: gh aw compile
 
       - name: Commit compiled lock files
+        env:
+          WORKFLOWS_PAT: ${{ secrets.AW_WORKFLOWS_PAT }}
         run: |
           if git diff --quiet; then
             echo "No lock file changes."
             exit 0
           fi
+          if [ -z "${WORKFLOWS_PAT}" ]; then
+            echo "::error::AW_WORKFLOWS_PAT is required when gh-aw changes workflow lock files. Use a token with Contents read/write and Workflows read/write permissions."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${WORKFLOWS_PAT}@github.com/${GITHUB_REPOSITORY}.git"
           git add .github/workflows/*.lock.yml .github/aw/actions-lock.json
           git commit -m "chore(aw): compile agentic workflows"
           git push
