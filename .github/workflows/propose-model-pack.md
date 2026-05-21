@@ -11,6 +11,7 @@ network: defaults
 safe-outputs:
   create-pull-request:
     max: 1
+    protected-files: allowed
     allowed-files:
       - .codeql/models/generated-sql-injection-sinks.yaml
       - docs/codeql-gap-analysis.md
