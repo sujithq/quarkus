@@ -9,8 +9,12 @@ engine: copilot
 network: defaults
 
 safe-outputs:
-  update-file:
-    max: 3
+  create-pull-request:
+    max: 1
+    protected-files: allowed
+    allowed-files:
+      - .codeql/models/generated-sql-injection-sinks.yaml
+      - docs/codeql-gap-analysis.md
 
 ---
 
@@ -157,9 +161,9 @@ next: VERIFY
 ### 11. Submit changes
 
 - If changes were made:
-  - commit changes to current branch
-  - do NOT create a new pull request
-  - update the existing pull request
+  - use the create-pull-request safe output
+  - include all changes needed for verification
+  - do NOT use noop after creating or updating files
 
 - Use noop ONLY when:
   - precondition not met
