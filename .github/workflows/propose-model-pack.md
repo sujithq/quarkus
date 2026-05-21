@@ -9,10 +9,8 @@ engine: copilot
 network: defaults
 
 safe-outputs:
-  create-file:
+  create-pull-request:
     max: 1
-  update-file:
-    max: 2
 
 ---
 
