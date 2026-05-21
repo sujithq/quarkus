@@ -9,7 +9,7 @@ engine: copilot
 network: defaults
 
 safe-outputs:
-  create-file:
+  create-pull-request:
     max: 1
 
 ---
@@ -117,9 +117,9 @@ Combine ALL entries into ONE YAML file.
 
 ---
 
-### 9. Create output file
+### 9. Create output file in a pull request
 
-Create exactly one file:
+Create a pull request that adds exactly one new file:
 
 .codeql/models/generated-sql-injection-sinks.yaml
 
@@ -137,7 +137,7 @@ extensions:
 
 ---
 
-### 11. Update analysis file
+### 11. Update analysis file in the same pull request
 
 Append to:
 
@@ -170,7 +170,7 @@ next: VERIFY
 
 ## Success Criteria
 
-- File created:
+- Pull request includes created file:
   .codeql/models/generated-sql-injection-sinks.yaml
 
 - Multiple findings supported
@@ -178,6 +178,6 @@ next: VERIFY
 - Correct filtering:
   - JPA excluded ✅
 
-- Analysis file updated with:
+- Pull request updates analysis file with:
   - status: MODEL_GENERATED
   - next: VERIFY
