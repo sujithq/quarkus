@@ -13,6 +13,7 @@ safe-outputs:
     max: 1
     allowed-files:
       - .codeql/models/generated-sql-injection-sinks.yaml
+      - docs/codeql-gap-analysis.md
 
 ---
 
@@ -83,6 +84,12 @@ When this workflow is manually run:
 
    status: MODEL_GENERATED
    next: VERIFY
+
+9. Submit the changes:
+  - If you created or updated any file, you MUST use the create-pull-request safe output.
+  - The pull request MUST include all file changes needed for verification.
+  - Do NOT use noop after creating or updating files in the workspace.
+  - Use noop ONLY when the precondition is not met or when there are no missing-sink findings to model.
 
 ## YAML structure (reference)
 
