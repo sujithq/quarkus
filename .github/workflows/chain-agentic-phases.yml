@@ -1,0 +1,126 @@
+name: Chain Agentic CodeQL Phases
+
+on:
+  workflow_run:
+    workflows:
+      - "DETECT CodeQL Coverage Gaps (SQL Injection)"
+      - "PROPOSE CodeQL Model Pack (SQL Injection) — MERGE MODE"
+    types:
+      - completed
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-next-phase:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve next phase
+        id: phase
+        shell: bash
+        env:
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+        run: |
+          case "$WORKFLOW_NAME" in
+            "DETECT CodeQL Coverage Gaps (SQL Injection)")
+              echo "next_workflow=propose-model-pack.lock.yml" >> "$GITHUB_OUTPUT"
+              echo "next_phase=PROPOSE" >> "$GITHUB_OUTPUT"
+              ;;
+            "PROPOSE CodeQL Model Pack (SQL Injection) — MERGE MODE")
+              echo "next_workflow=verify-model-pack.lock.yml" >> "$GITHUB_OUTPUT"
+              echo "next_phase=VERIFY" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "No chained phase for workflow: $WORKFLOW_NAME"
+              echo "next_workflow=" >> "$GITHUB_OUTPUT"
+              echo "next_phase=" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Download agent artifact
+        if: ${{ steps.phase.outputs.next_workflow != '' }}
+        id: artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          artifact_dir="$RUNNER_TEMP/agent-artifact"
+          mkdir -p "$artifact_dir"
+
+          gh run download "$RUN_ID" \
+            --repo "$REPOSITORY" \
+            --name agent \
+            --dir "$artifact_dir"
+
+          safeoutputs_path="$(find "$artifact_dir" -type f -name safeoutputs.jsonl | head -n 1)"
+          if [ -z "$safeoutputs_path" ]; then
+            echo "No safeoutputs.jsonl found in agent artifact; skipping chain."
+            echo "safeoutputs_path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "safeoutputs_path=$safeoutputs_path" >> "$GITHUB_OUTPUT"
+
+      - name: Extract created PR branch
+        if: ${{ steps.artifact.outputs.safeoutputs_path != '' }}
+        id: branch
+        shell: bash
+        env:
+          SAFEOUTPUTS_PATH: ${{ steps.artifact.outputs.safeoutputs_path }}
+        run: |
+          set -euo pipefail
+
+          branch="$(node <<'NODE'
+          const fs = require('fs');
+
+          const file = process.env.SAFEOUTPUTS_PATH;
+          const lines = fs.readFileSync(file, 'utf8')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+
+          for (const line of lines) {
+            const item = JSON.parse(line);
+            if (item.type === 'create_pull_request' && item.branch) {
+              process.stdout.write(item.branch);
+              process.exit(0);
+            }
+          }
+          NODE
+          )"
+
+          if [ -z "$branch" ]; then
+            echo "No create_pull_request branch found; skipping chain."
+            echo "branch=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch next phase
+        if: ${{ steps.branch.outputs.branch != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          NEXT_WORKFLOW: ${{ steps.phase.outputs.next_workflow }}
+          NEXT_PHASE: ${{ steps.phase.outputs.next_phase }}
+          NEXT_REF: ${{ steps.branch.outputs.branch }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+
+          aw_context="{\"chained_from_run_id\":\"$SOURCE_RUN_ID\",\"chained_from_run_url\":\"$SOURCE_RUN_URL\"}"
+
+          echo "Dispatching $NEXT_PHASE via $NEXT_WORKFLOW on $NEXT_REF"
+          gh workflow run "$NEXT_WORKFLOW" \
+            --repo "$REPOSITORY" \
+            --ref "$NEXT_REF" \
+            -f aw_context="$aw_context"
