@@ -1,6 +1,9 @@
 ---
 on:
-  workflow_dispatch:
+   push:
+      paths:
+         - src/**
+   workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,7 +23,7 @@ Analyse the repository to detect SQL injection patterns that are NOT detected by
 
 ## Instructions
 
-When this workflow is manually run:
+When this workflow is manually run or triggered by source changes:
 
 1. Identify input sources:
    - @QueryParam
