@@ -18,7 +18,7 @@ safe-outputs:
 
 # VERIFY CodeQL Model Pack (SQL Injection)
 
-Validate that the generated CodeQL model pack improves SQL injection detection.
+Validate that the generated CodeQL model pack improves SQL injection detection by reproducing the project's documented before/after CodeQL proof.
 
 ---
 
@@ -65,47 +65,124 @@ If NOT present:
 
 ---
 
-### 5. Perform validation (logical verification)
+### 5. Read the repository's existing verification proof
 
-Simulate validation based on detection context:
+Use these files as the verification pattern:
 
-- Identify findings from:
-  docs/codeql-gap-analysis.md
+- docs/jpa-and-quarkus-codeql-proof.md
+- docs/codeql-modeling-notes.md
+- qlpack.yml
+- ql/src/quarkus-sinks.model.yml
 
-For each finding:
+The clean proof is:
 
-- Verify that:
-  - a corresponding sink exists in the model file
-  - the sink matches class + method
-
----
-
-### 6. Determine outcome
-
-Define:
-
-- BEFORE:
-  - SQL injection NOT detected (gap exists)
-
-- AFTER:
-  - SQL injection SHOULD be detectable with model
+- Baseline CodeQL run without a model pack reports the standard JPA control finding only.
+- Reference modeled run with the existing `ql/src/quarkus-sinks.model.yml` pack reports the JPA control finding plus the Quarkus/Panache finding.
+- Generated modeled run with `.codeql/models/generated-sql-injection-sinks.yaml` must report the same Quarkus/Panache finding as the reference model pack.
 
 ---
 
-### 7. Classify validation confidence
+### 6. Perform executable CodeQL validation
+
+Run the actual project verification when tools are available.
+
+Required tools:
+
+- Java
+- Maven
+- CodeQL CLI
+
+Commands to run:
+
+1. Verify tools:
+
+```powershell
+java -version
+mvn -version
+codeql version
+```
+
+2. Build and create a fresh CodeQL database:
+
+```powershell
+mvn clean package
+codeql database create .aw-verify/db-quarkus --overwrite --language=java --command="mvn clean package"
+```
+
+3. Run baseline analysis without any model pack:
+
+```powershell
+New-Item -ItemType Directory -Force .aw-verify/results | Out-Null
+codeql database analyze .aw-verify/db-quarkus codeql/java-queries --rerun --format=sarif-latest --output=.aw-verify/results/baseline.sarif
+```
+
+4. Run reference modeled analysis using the existing project model pack from `ql/src`:
+
+```powershell
+codeql pack install
+codeql database analyze .aw-verify/db-quarkus codeql/java-queries --model-packs=local/quarkus-models --additional-packs=. --rerun --format=sarif-latest --output=.aw-verify/results/reference-modeled.sarif
+```
+
+5. Run generated modeled analysis using `.codeql/models/generated-sql-injection-sinks.yaml`.
+
+Create a temporary CodeQL pack under `.aw-verify/generated-pack` whose `qlpack.yml` references a copied version of the generated model file. Do not commit this temporary pack.
+
+Example temporary pack shape:
+
+```yaml
+name: local/generated-quarkus-models
+version: 0.0.1
+library: true
+extensionTargets:
+  codeql/java-all: "*"
+dataExtensions:
+  - generated-sql-injection-sinks.yaml
+```
+
+Then run:
+
+```powershell
+codeql pack install .aw-verify/generated-pack
+codeql database analyze .aw-verify/db-quarkus codeql/java-queries --model-packs=local/generated-quarkus-models --additional-packs=.aw-verify/generated-pack --rerun --format=sarif-latest --output=.aw-verify/results/generated-modeled.sarif
+```
+
+---
+
+### 7. Compare SARIF results
+
+Compare all three SARIF files:
+
+- .aw-verify/results/baseline.sarif
+- .aw-verify/results/reference-modeled.sarif
+- .aw-verify/results/generated-modeled.sarif
+
+Expected result pattern:
+
+- Baseline: 1 SQL injection result, the standard JPA control case.
+- Reference modeled: 2 SQL injection results, JPA plus Quarkus/Panache.
+- Generated modeled: 2 SQL injection results, JPA plus Quarkus/Panache.
+
+The generated pack is verified only if the generated modeled run reports the Panache `list(query)` finding at `src/main/java/com/example/DoctypeShareFolderMapping.java` in addition to the JPA control finding.
+
+If tools are unavailable or a command fails, do not claim verification succeeded. Record the failure, command, and observed output in the analysis document and set `status: VERIFICATION_BLOCKED`.
+
+---
+
+### 8. Classify validation confidence
 
 - high:
-  - clear match between finding and generated sink
+  - baseline/reference/generated SARIF comparison matches the expected pattern
+  - generated model pack reports the same Panache finding as the `ql/src` reference pack
 
 - medium:
-  - partial or indirect mapping
+  - generated model pack loads and produces an additional SQL injection result, but the exact location differs from the reference proof
 
 - low:
-  - uncertainty in sink mapping
+  - generated model pack structure matches the expected sink, but executable validation could not be completed
 
 ---
 
-### 8. Update analysis file
+### 9. Update analysis file
 
 Append to:
 
@@ -113,34 +190,45 @@ docs/codeql-gap-analysis.md
 
 ---
 
-### 9. Append content (STRICT)
+### 10. Append content (STRICT)
 
 ## Validation Results
 
 ### Summary
 
-- Model file applied: ✅
-- Findings matched to sinks: ✅
+- Generated model file applied: <yes | no>
+- Executable CodeQL validation: <passed | blocked | failed>
+- Reference `ql/src` proof compared: <yes | no>
 
-### Before Model Pack
+### Baseline: No Model Pack
 
-- SQL injection not detected
+- Result count: <number>
+- Expected: JPA control finding only
+- Panache finding present: <yes | no>
 
-### After Model Pack
+### Reference: Existing `ql/src` Model Pack
 
-- SQL injection expected to be detected via:
-  - <Class.method>
+- Result count: <number>
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: <yes | no>
+
+### Generated Model Pack
+
+- Result count: <number>
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: <yes | no>
+- Generated sink exercised: <Class.method>
 
 ### Validation Confidence
 
 - <high | medium | low>
 
-status: VERIFIED
-next: COMPLETE
+status: <VERIFIED | VERIFICATION_BLOCKED | VERIFICATION_FAILED>
+next: <COMPLETE | FIX_GENERATED_MODEL | RERUN_WITH_TOOLING>
 
 ---
 
-### 10. Submit changes
+### 11. Submit changes
 
 - If validation results were added:
   - use the create-pull-request safe output
@@ -155,7 +243,8 @@ next: COMPLETE
 
 ## Constraints
 
-- Do NOT execute real CodeQL scans (logical validation only)
+- Do execute the real CodeQL comparison when Java, Maven, and CodeQL CLI are available
+- Do NOT commit `.aw-verify` or other temporary verification files
 - Do NOT modify model files
 - Do NOT introduce new sinks
 - Only validate what was generated
