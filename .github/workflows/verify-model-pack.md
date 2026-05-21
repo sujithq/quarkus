@@ -9,8 +9,10 @@ engine: copilot
 network: defaults
 
 safe-outputs:
-  update-file:
-    max: 2
+  create-pull-request:
+    max: 1
+    allowed-files:
+      - docs/codeql-gap-analysis.md
 
 ---
 
@@ -141,9 +143,9 @@ next: COMPLETE
 ### 10. Submit changes
 
 - If validation results were added:
-  - commit changes to current branch
-  - update existing pull request
-  - do NOT create a new pull request
+  - use the create-pull-request safe output
+  - include the updated docs/codeql-gap-analysis.md file
+  - do NOT use noop after updating files
 
 - Use noop ONLY when:
   - precondition not met
