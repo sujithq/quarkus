@@ -11,121 +11,80 @@ network: defaults
 safe-outputs:
   create-pull-request:
     max: 1
+    allowed-files:
+      - .codeql/models/generated-sql-injection-sinks.yaml
 
 ---
 
-# PROPOSE CodeQL Model Pack (SQL Injection)
+# PROPOSE CodeQL Model Pack (SQL Injection) — MERGE MODE
 
-Generate a CodeQL model pack based on detected coverage gaps.
+Generate or update a CodeQL model pack based on detected coverage gaps, WITHOUT overwriting existing entries.
 
 ## Instructions
 
 When this workflow is manually run:
 
----
+1. Read input file:
+   - docs/codeql-gap-analysis.md
 
-### 1. Read input file
+2. Validate precondition:
+   - Continue ONLY if the file contains: status: GAP_DETECTED
+   - Otherwise STOP.
 
-Read:
+3. Extract findings from docs/codeql-gap-analysis.md:
+   - For each Finding, extract:
+     - Sink (Class.method)
+     - Gap Type
+   - Only process findings where Gap Type == missing-sink
 
-docs/codeql-gap-analysis.md
+4. Classify each sink (for reporting only):
+   - jpa: createQuery, createNativeQuery, etc. (skip modelling)
+   - framework: Panache/Hibernate helper methods
+   - wrapper: repository/DAO abstraction around ORM
+   - custom: unknown query execution method
 
----
+5. Transform each sink into a CodeQL sinkModel entry:
+   - Default to Argument[0] unless there is strong evidence otherwise.
+   - Entry format:
+     ["<Class>", "<method>", "Argument[0]", "sql-injection"]
 
-### 2. Validate precondition
+6. MERGE LOGIC (CRITICAL):
 
-Check top of file:
+   Target model file:
+   - .codeql/models/generated-sql-injection-sinks.yaml
 
-- If status != GAP_DETECTED
-  → STOP
+   If the model file DOES NOT exist:
+   - Create it with the standard YAML structure and all new entries.
 
-- If status == GAP_DETECTED
-  → continue
+   If the model file DOES exist:
+   - Read existing entries under: extensions[0].data
+   - Merge new entries into the existing data list
+   - Deduplicate using the key:
+     Class + Method + Argument + Kind
+   - Do NOT delete existing entries
+   - Do NOT rewrite unrelated YAML sections
+   - Preserve comments/formatting as much as possible (only update the data list)
 
----
+7. Write result:
+   - If created: create .codeql/models/generated-sql-injection-sinks.yaml
+   - If updated: update .codeql/models/generated-sql-injection-sinks.yaml
 
-### 3. Extract findings
+8. Update docs/codeql-gap-analysis.md (append only):
 
-For EACH finding:
+   Append:
 
-Extract:
+   ## Model Pack Proposal
+   - Model file: .codeql/models/generated-sql-injection-sinks.yaml
+   - Merge mode: enabled (existing entries preserved)
+   - Added entries:
+     - <Class.method> (<classification>)
+   - Skipped entries:
+     - <Class.method> (jpa / already-modelled / duplicate)
 
-- Source
-- Sink
-- Gap Type
-- Confidence
+   status: MODEL_GENERATED
+   next: VERIFY
 
----
-
-### 4. Filter findings
-
-ONLY process findings where:
-
-- Gap Type == missing-sink
-
-IGNORE:
-
-- missing-source
-- missing-flow
-
----
-
-### 5. Classify sinks
-
-Classify each Sink into one of:
-
-- jpa
-  - examples: createQuery, createNativeQuery
-
-- framework
-  - examples: PanacheEntityBase.list, Hibernate
-
-- wrapper
-  - repository or DAO abstractions
-
-- custom
-  - unknown execution methods
-
----
-
-### 6. Filter sinks for modelling
-
-DO NOT generate model entries for:
-
-- jpa sinks (already covered by CodeQL)
-- duplicate sinks
-
-ONLY keep:
-
-- framework
-- wrapper
-- custom
-
----
-
-### 7. Transform sinks into CodeQL entries
-
-For each remaining sink create:
-
-["<Class>", "<method>", "Argument[0]", "sql-injection"]
-
----
-
-### 8. Aggregate entries
-
-Combine ALL entries into ONE YAML file.
-
----
-
-### 9. Create output file in a pull request
-
-Create a pull request that adds exactly one new file:
-
-.codeql/models/generated-sql-injection-sinks.yaml
-
----
-
-### 10. YAML format (STRICT)
+## YAML structure (reference)
 
 extensions:
   - addsTo:
@@ -135,49 +94,18 @@ extensions:
       - ["io.quarkus.hibernate.orm.panache.PanacheEntityBase", "list", "Argument[0]", "sql-injection"]
       - ["com.example.repo.CustomRepository", "executeQuery", "Argument[0]", "sql-injection"]
 
----
-
-### 11. Update analysis file in the same pull request
-
-Append to:
-
-docs/codeql-gap-analysis.md
-
----
-
-### 12. Append content (STRICT)
-
-## Model Pack Proposal
-
-Generated sinks:
-
-- <Class.method> (framework / wrapper / custom)
-
-status: MODEL_GENERATED
-next: VERIFY
-
----
-
 ## Constraints
 
-- Do NOT modify existing CodeQL queries
-- Do NOT generalise to entire classes
-- Do NOT generate duplicate entries
-- Keep models minimal and precise
-- Prefer missing a sink over false positives
-
----
+- Do NOT modify CodeQL queries
+- Do NOT remove existing model entries
+- Avoid over-generalisation (method-level only)
+- Prefer missing an entry over creating false positives
 
 ## Success Criteria
 
-- Pull request includes created file:
-  .codeql/models/generated-sql-injection-sinks.yaml
-
-- Multiple findings supported
-
-- Correct filtering:
-  - JPA excluded ✅
-
-- Pull request updates analysis file with:
+- A model file exists at:
+  - .codeql/models/generated-sql-injection-sinks.yaml
+- If file pre-existed, it was updated by merging (no loss of entries)
+- docs/codeql-gap-analysis.md updated with:
   - status: MODEL_GENERATED
   - next: VERIFY
