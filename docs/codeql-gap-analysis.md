@@ -1,7 +1,7 @@
 # CodeQL Gap Analysis
 
-status: GAP_DETECTED
-next: PROPOSE_MODEL
+status: MODEL_GENERATED
+next: VERIFY
 
 ## Overview
 
@@ -162,3 +162,27 @@ This repository contains two exercised vulnerable flows through Panache methods 
 ## Recommended Action
 
 Proceed to PROPOSE_MODEL workflow to generate CodeQL model pack entries for the observed Panache sink gaps.
+
+## Model Pack Proposal
+
+- Model file: .codeql/models/generated-sql-injection-sinks.yaml
+- Merge mode: enabled (existing entries preserved)
+
+### Added entries
+
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.list (framework, observed)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.find (framework, observed)
+
+### Skipped entries
+
+None
+
+### Candidate related sinks
+
+- io.quarkus.hibernate.orm.panache.PanacheQuery.filter (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.count (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.delete (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.update (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+
+status: MODEL_GENERATED
+next: VERIFY
