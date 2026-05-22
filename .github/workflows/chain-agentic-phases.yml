@@ -239,8 +239,8 @@ jobs:
           fi
 
           decoded="$(printf '%s' "$content" | base64 --decode)"
-          status="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*status:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); status=value } END { print status }')"
-          next="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*next:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); next=value } END { print next }')"
+          status="$(printf '%s\n' "$decoded" | awk -F: '{ key=$1; gsub(/^[ \t*]+|[ \t*]+$/, "", key); if (tolower(key) == "status") { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); status=value } } END { print status }')"
+          next="$(printf '%s\n' "$decoded" | awk -F: '{ key=$1; gsub(/^[ \t*]+|[ \t*]+$/, "", key); if (tolower(key) == "next") { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); next_state=value } } END { print next_state }')"
 
           echo "Current analysis state: status=$status next=$next"
 
@@ -339,8 +339,8 @@ jobs:
             fi
 
             decoded="$(printf '%s' "$content" | base64 --decode)"
-            status="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*status:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); status=value } END { print status }')"
-            next="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*next:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); next=value } END { print next }')"
+            status="$(printf '%s\n' "$decoded" | awk -F: '{ key=$1; gsub(/^[ \t*]+|[ \t*]+$/, "", key); if (tolower(key) == "status") { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); status=value } } END { print status }')"
+            next="$(printf '%s\n' "$decoded" | awk -F: '{ key=$1; gsub(/^[ \t*]+|[ \t*]+$/, "", key); if (tolower(key) == "next") { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); next_state=value } } END { print next_state }')"
             echo "Current analysis state: status=$status next=$next"
 
             if [ "$status" != "MODEL_GENERATED" ] || [ "$next" != "VERIFY" ]; then

@@ -51,6 +51,24 @@ New main DETECT run started:
 
 Note: GitHub `workflow_run` and scheduled workflow behavior is normally evaluated from the default branch workflow definitions. If this branch run does not exercise the updated chainer, merge or fast-forward the hardening workflow changes to `main`, then repeat the DETECT run from `main` for the representative end-to-end test.
 
+Latest main end-to-end run update:
+
+1. DETECT run `26271677947` completed successfully on `main`.
+2. DETECT created PR #23: `https://github.com/sujithq/quarkus/pull/23`.
+3. Chain run `26271872316` completed successfully and dispatched PROPOSE.
+4. PROPOSE run `26271876961` completed successfully.
+5. PROPOSE created PR #24: `https://github.com/sujithq/quarkus/pull/24`.
+6. PR #24 branch: `codeql-gap-analysis-sql-injection-0892aca1f3cb0328-ae1d212a07ffdc64`.
+7. PR #24 generated `.codeql/models/generated-sql-injection-sinks.yaml` with the expected Java `sinkModel` row for `PanacheEntityBase.list`.
+8. VERIFY did not start automatically because the chainer's readiness parser only accepted plain `status:` / `next:` markers, while PROPOSE emitted markdown-bold markers: `**status**: MODEL_GENERATED` and `**next**: VERIFY`.
+9. Manual reconciliation run `26272317437` also exposed that `next` was used as an awk variable name, which is invalid because `next` is an awk keyword.
+
+Fix applied after this failure:
+
+1. `chain-agentic-phases.yml` now strips leading/trailing markdown asterisks from marker keys before comparing them.
+2. The awk parser now stores the `next` marker in `next_state` instead of the reserved keyword `next`.
+3. `gh aw compile` completed with 0 errors and 0 warnings after the fix.
+
 ## Verified Evidence
 
 VERIFY run `26270112644` confirmed executable CodeQL validation:
