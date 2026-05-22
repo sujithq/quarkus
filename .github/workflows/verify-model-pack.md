@@ -10,6 +10,7 @@ network:
   allowed:
     - defaults
     - github
+    - java
 
 safe-outputs:
   create-pull-request:
@@ -94,6 +95,8 @@ Required tools:
 - Java
 - Maven
 - CodeQL CLI
+
+Linux GitHub-hosted runners should already include Java and Maven. Maven still needs network access to resolve project dependencies from Maven Central during `mvn clean package` and `codeql database create`. The workflow network allowlist includes the `java` ecosystem for Maven Central and related Java package infrastructure.
 
 The GitHub Actions execution environment may not have `codeql` on `PATH`. In that case, bootstrap the official CodeQL bundle locally and add it to `PATH` for the current shell session. Do not commit the downloaded tools. The workflow network allowlist includes the `github` ecosystem so GitHub release asset redirects are permitted.
 
