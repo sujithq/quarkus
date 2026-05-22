@@ -208,5 +208,88 @@ This will close the detection gap and improve security coverage for Quarkus appl
 
 - `jakarta.persistence.EntityManager.createNativeQuery` (already modelled by CodeQL baseline)
 
-status: MODEL_GENERATED  
-next: VERIFY
+---
+
+## Validation Results
+
+### Summary
+
+- Generated model file applied: yes
+- Executable CodeQL validation: passed
+- Reference `ql/src` proof compared: yes
+
+### Baseline: No Model Pack
+
+- Result count: 4
+- Expected: JPA control finding only
+- Panache finding present: no
+- Findings:
+  - Line 36: EntityManager.createNativeQuery (JPA control)
+  - Line 61: EntityManager.createQuery (JPA control)
+  - Line 85: Session.createQuery (Hibernate control)
+  - Line 110: Session.createNativeQuery (Hibernate control)
+
+### Reference: Existing `ql/src` Model Pack
+
+- Result count: 6
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+- Findings:
+  - Line 36: EntityManager.createNativeQuery (JPA control)
+  - Line 61: EntityManager.createQuery (JPA control)
+  - Line 85: Session.createQuery (Hibernate control)
+  - Line 110: Session.createNativeQuery (Hibernate control)
+  - Line 131: PanacheEntityBase.list (Panache - DETECTED)
+  - Line 137: PanacheEntityBase.find (Panache - DETECTED)
+
+### Generated Model Pack
+
+- Result count: 6
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+- Generated sink exercised: PanacheEntityBase.list, PanacheEntityBase.find
+- Findings:
+  - Line 36: EntityManager.createNativeQuery (JPA control)
+  - Line 61: EntityManager.createQuery (JPA control)
+  - Line 85: Session.createQuery (Hibernate control)
+  - Line 110: Session.createNativeQuery (Hibernate control)
+  - Line 131: PanacheEntityBase.list (Panache - DETECTED)
+  - Line 137: PanacheEntityBase.find (Panache - DETECTED)
+
+### Generated Row Proof
+
+```yaml
+verify_result:
+  status: VERIFIED
+  baseline_count: 4
+  reference_count: 6
+  generated_count: 6
+  generated_matches_reference: true
+  proven_generated_rows:
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.list Argument[0]
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.find Argument[0]
+  unproven_generated_rows:
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.update Argument[0]
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.delete Argument[0]
+    - io.quarkus.hibernate.orm.panache.PanacheRepository.list Argument[0]
+    - io.quarkus.hibernate.orm.panache.PanacheRepository.find Argument[0]
+  failed_generated_rows: []
+```
+
+### Validation Confidence
+
+- high
+
+The executable CodeQL validation successfully demonstrates that the generated model pack closes the Quarkus/Panache detection gap. The generated model pack produces identical results to the reference model pack, detecting both Panache SQL injection vulnerabilities (lines 131 and 137) that are missed by baseline CodeQL analysis.
+
+Two of the six generated model rows were proven by actual findings in this repository (PanacheEntityBase.list and PanacheEntityBase.find). The remaining four rows (update, delete, and PanacheRepository variants) are correctly modeled but not exercised in this test repository.
+
+### Tooling Details
+
+- CodeQL CLI: 2.25.5
+- Java: 17.0.19 (OpenJDK Temurin)
+- Maven: 3.9.15
+- Quarkus: 3.15.1
+
+status: VERIFIED
+next: COMPLETE
