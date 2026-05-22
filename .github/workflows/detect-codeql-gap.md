@@ -51,7 +51,13 @@ When this workflow is manually run or triggered by source changes:
    - missing-source
    - missing-flow
 
-7. Create exactly one pull request that adds this file:
+7. Separate evidence types:
+   - observed_gaps: concrete source -> concat -> execution flows present in this repository that CodeQL misses
+   - candidate_related_sinks: related framework APIs inferred from the observed API family but not directly exercised by this repository
+
+8. Treat observed_gaps as the only default input for automatic model generation. Candidate related sinks are useful context, but must be labelled as candidates unless the repository contains an exercised vulnerable flow for them.
+
+9. Create exactly one pull request that adds this file:
 
    docs/codeql-gap-analysis.md
 
@@ -73,6 +79,32 @@ next: PROPOSE_MODEL
 - Sink: PanacheEntityBase.list
 - Gap Type: missing-sink
 - Confidence: high
+
+## Evidence Contract
+
+```yaml
+observed_gaps:
+   - source_file: src/main/java/com/example/DoctypeShareFolderMappingResource.java
+      sink_file: src/main/java/com/example/DoctypeShareFolderMapping.java
+      sink_package: io.quarkus.hibernate.orm.panache
+      sink_type: PanacheEntityBase
+      sink_method: list
+      sink_argument: Argument[0]
+      gap_type: missing-sink
+      evidence: repo-local-flow
+      confidence: high
+
+candidate_related_sinks:
+   - sink_package: io.quarkus.hibernate.orm.panache
+      sink_type: PanacheEntityBase
+      sink_method: find
+      sink_argument: Argument[0]
+      evidence: framework-family-inference
+      confidence: medium
+      auto_model: false
+```
+
+Only include entries under observed_gaps when this repository contains the exercised flow. Put related APIs that are not exercised locally under candidate_related_sinks with auto_model: false.
 
 
 If no findings:
@@ -96,4 +128,5 @@ next: STOP
 
 - Pull request is created with: docs/codeql-gap-analysis.md
 - File contains status and next fields
+- File contains an Evidence Contract with observed_gaps and candidate_related_sinks
 - Ready for PROPOSE workflow

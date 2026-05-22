@@ -1,6 +1,14 @@
 name: Chain Agentic CodeQL Phases
 
 on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Optional pull request number to reconcile. Leave empty to scan all open PRs.
+        required: false
+        type: string
+  schedule:
+    - cron: "*/30 * * * *"
   pull_request:
     types:
       - opened
@@ -20,6 +28,10 @@ permissions:
   actions: write
   contents: read
   pull-requests: read
+
+concurrency:
+  group: agentic-codeql-phase-chain-${{ github.event_name }}-${{ github.event.workflow_run.id || github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   dispatch-next-phase:
@@ -84,6 +96,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
           REPOSITORY: ${{ github.repository }}
           SAFEOUTPUTS_PATH: ${{ steps.artifact.outputs.safeoutputs_path }}
+          NEXT_PHASE: ${{ steps.phase.outputs.next_phase }}
         run: |
           set -euo pipefail
 
@@ -120,12 +133,21 @@ jobs:
           title="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).title)' "$output_json")"
           base_branch="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).baseBranch)' "$output_json")"
 
+          branch_exists=false
           if gh api "repos/$REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+            branch_exists=true
+          fi
+
+          if [ "$branch_exists" = "true" ] && [ "$NEXT_PHASE" != "VERIFY" ]; then
             echo "branch=$branch" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Safe output branch '$branch' does not exist; resolving actual PR head branch."
+          if [ "$branch_exists" = "true" ]; then
+            echo "Safe output branch '$branch' exists, but VERIFY requires the actual model PR branch; resolving PR head branch."
+          else
+            echo "Safe output branch '$branch' does not exist; resolving actual PR head branch."
+          fi
 
           prs_json="$(gh pr list \
             --repo "$REPOSITORY" \
@@ -160,6 +182,12 @@ jobs:
           )"
 
           if [ -z "$resolved_branch" ]; then
+            if [ "$branch_exists" = "true" ]; then
+              echo "Could not resolve a suffixed PR branch; falling back to existing branch '$branch'."
+              echo "branch=$branch" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             echo "Could not resolve an open PR branch for safe output branch '$branch'."
             echo "branch=" >> "$GITHUB_OUTPUT"
             exit 0
@@ -211,8 +239,12 @@ jobs:
           fi
 
           decoded="$(printf '%s' "$content" | base64 --decode)"
+          status="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*status:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); status=value } END { print status }')"
+          next="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*next:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); next=value } END { print next }')"
 
-          if grep -q 'status: MODEL_GENERATED' <<< "$decoded" && grep -q 'next: VERIFY' <<< "$decoded"; then
+          echo "Current analysis state: status=$status next=$next"
+
+          if [ "$status" = "MODEL_GENERATED" ] && [ "$next" = "VERIFY" ]; then
             echo "should_dispatch=true" >> "$GITHUB_OUTPUT"
           else
             echo "PR is not ready for VERIFY; skipping."
@@ -238,3 +270,102 @@ jobs:
             --repo "$REPOSITORY" \
             --ref "$NEXT_REF" \
             -f aw_context="$aw_context"
+
+  reconcile-ready-model-prs:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reconcile PRs ready for VERIFY
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REQUESTED_PR: ${{ github.event.inputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          prs_json="$(gh pr list \
+            --repo "$REPOSITORY" \
+            --state open \
+            --json number,title,headRefName,headRefOid,headRepository,url \
+            --limit 100)"
+
+          prs_path="$RUNNER_TEMP/open-prs.json"
+          printf '%s' "$prs_json" > "$prs_path"
+
+          candidates_path="$RUNNER_TEMP/verify-candidates.json"
+          REQUESTED_PR="$REQUESTED_PR" REPOSITORY="$REPOSITORY" PRS_PATH="$prs_path" node <<'NODE' > "$candidates_path"
+          const fs = require('fs');
+
+          const requestedPr = process.env.REQUESTED_PR;
+          const repository = process.env.REPOSITORY;
+          const prs = JSON.parse(fs.readFileSync(process.env.PRS_PATH, 'utf8'));
+
+          const candidates = prs.filter((pr) => {
+            const sameRepo = pr.headRepository && pr.headRepository.nameWithOwner === repository;
+            const requested = !requestedPr || String(pr.number) === String(requestedPr);
+            return sameRepo && requested;
+          });
+
+          process.stdout.write(JSON.stringify(candidates));
+          NODE
+
+          candidate_count="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).length))' "$candidates_path")"
+          echo "Reconciling $candidate_count candidate PR(s)."
+
+          node -e "
+          const fs = require('fs');
+          const candidates = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+          for (const candidate of candidates) {
+            process.stdout.write(candidate.number + '\\t' + candidate.headRefName + '\\t' + candidate.headRefOid + '\\t' + candidate.url + '\\n');
+          }
+          " "$candidates_path" > "$RUNNER_TEMP/candidate-lines.txt"
+
+          while IFS=$'\t' read -r pr_number head_ref head_sha pr_url; do
+            if [ -z "${pr_number:-}" ]; then
+              continue
+            fi
+
+            echo "Checking PR #$pr_number ($head_ref)"
+
+            if ! gh api "repos/$REPOSITORY/contents/.codeql/models/generated-sql-injection-sinks.yaml?ref=$head_ref" >/dev/null 2>&1; then
+              echo "Generated model file not found on $head_ref; skipping."
+              continue
+            fi
+
+            if ! content="$(gh api "repos/$REPOSITORY/contents/docs/codeql-gap-analysis.md?ref=$head_ref" --jq '.content' 2>/dev/null)"; then
+              echo "docs/codeql-gap-analysis.md not found on $head_ref; skipping."
+              continue
+            fi
+
+            decoded="$(printf '%s' "$content" | base64 --decode)"
+            status="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*status:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); status=value } END { print status }')"
+            next="$(printf '%s\n' "$decoded" | awk -F: '/^[[:space:]]*next:/ { value=$2; gsub(/^[ \t]+|[ \t]+$/, "", value); next=value } END { print next }')"
+            echo "Current analysis state: status=$status next=$next"
+
+            if [ "$status" != "MODEL_GENERATED" ] || [ "$next" != "VERIFY" ]; then
+              echo "PR #$pr_number is not ready for VERIFY; skipping."
+              continue
+            fi
+
+            runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/verify-model-pack.lock.yml/runs?branch=$head_ref&per_page=20")"
+            active_runs="$(RUNS_JSON="$runs_json" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; process.stdout.write(String(runs.filter((run) => run.status !== "completed").length));')"
+            if [ "$active_runs" != "0" ]; then
+              echo "VERIFY is already active for $head_ref; skipping."
+              continue
+            fi
+
+            verified_head="$(RUNS_JSON="$runs_json" HEAD_SHA="$head_sha" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; const headSha = process.env.HEAD_SHA; process.stdout.write(String(runs.filter((run) => run.head_sha === headSha && run.conclusion === "success").length));')"
+            if [ "$verified_head" != "0" ]; then
+              echo "VERIFY already succeeded for PR #$pr_number head $head_sha; skipping."
+              continue
+            fi
+
+            aw_context="{\"reconciled_from_pr_number\":\"$pr_number\",\"reconciled_from_pr_url\":\"$pr_url\"}"
+
+            echo "Dispatching VERIFY for PR #$pr_number on $head_ref"
+            gh workflow run verify-model-pack.lock.yml \
+              --repo "$REPOSITORY" \
+              --ref "$head_ref" \
+              -f aw_context="$aw_context"
+          done < "$RUNNER_TEMP/candidate-lines.txt"

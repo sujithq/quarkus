@@ -194,6 +194,14 @@ The generated pack is verified only if the generated modeled run reports the Pan
 
 If tools are unavailable or a command fails, do not claim verification succeeded. Record the failure, command, and observed output in the analysis document and set `status: VERIFICATION_BLOCKED`.
 
+Also compare generated model rows with the observed findings. For each row in `.codeql/models/generated-sql-injection-sinks.yaml`, classify it as:
+
+- proven: the generated modeled SARIF contains a repo-local finding that exercises the row's type/method intent
+- unproven: the row loads successfully, but this repository does not contain an exercised vulnerable flow proving that specific row
+- failed: the row was expected to prove an observed gap but no matching generated result appeared
+
+At minimum, the Panache `PanacheEntityBase.list Argument[0]` row must be proven by the generated modeled SARIF result at `src/main/java/com/example/DoctypeShareFolderMapping.java`.
+
 ---
 
 ### 8. Classify validation confidence
@@ -247,6 +255,23 @@ docs/codeql-gap-analysis.md
 - Panache finding present: <yes | no>
 - Generated sink exercised: <Class.method>
 
+### Generated Row Proof
+
+```yaml
+verify_result:
+  status: <VERIFIED | VERIFICATION_BLOCKED | VERIFICATION_FAILED>
+  baseline_count: <number>
+  reference_count: <number>
+  generated_count: <number>
+  generated_matches_reference: <true | false>
+  proven_generated_rows:
+    - <Package.Type.method Argument[n]>
+  unproven_generated_rows:
+    - <Package.Type.method Argument[n]>
+  failed_generated_rows:
+    - <Package.Type.method Argument[n]>
+```
+
 ### Validation Confidence
 
 - <high | medium | low>
@@ -276,6 +301,7 @@ next: <COMPLETE | FIX_GENERATED_MODEL | RERUN_WITH_TOOLING>
 - Do NOT modify model files
 - Do NOT introduce new sinks
 - Only validate what was generated
+- Do NOT report `status: VERIFIED` unless executable CodeQL validation ran and the generated model proves the observed gap
 
 ---
 
@@ -283,6 +309,7 @@ next: <COMPLETE | FIX_GENERATED_MODEL | RERUN_WITH_TOOLING>
 
 - docs/codeql-gap-analysis.md updated with:
   - Validation Results section
+  - Generated Row Proof section
   - status: VERIFIED
   - next: COMPLETE
 
