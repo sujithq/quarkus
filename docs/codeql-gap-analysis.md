@@ -196,3 +196,22 @@ public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String do
 **Analysis completed**: 2026-05-22  
 **CodeQL version**: (determined by workflow)  
 **Repository**: sujithq/quarkus
+
+---
+
+## Model Pack Proposal
+
+- Model file: `.codeql/models/generated-sql-injection-sinks.yaml`
+- Merge mode: enabled (existing entries preserved)
+
+### Added entries
+
+- `io.quarkus.hibernate.orm.panache.PanacheEntityBase.list` (framework - Quarkus Panache)
+- `io.quarkus.hibernate.orm.panache.PanacheEntityBase.find` (framework - Quarkus Panache)
+
+### Skipped entries
+
+- None (file created fresh)
+
+**status**: MODEL_GENERATED  
+**next**: VERIFY
