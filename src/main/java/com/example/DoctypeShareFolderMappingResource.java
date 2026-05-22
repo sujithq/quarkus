@@ -29,8 +29,20 @@ public class DoctypeShareFolderMappingResource {
     }
 
     @GET
+    @Path("/panache-find-unsafe")
+    public List<DoctypeShareFolderMapping> findPanacheFindUnsafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypePanacheFindUnsafe(doctype);
+    }
+
+    @GET
     @Path("/panache-safe")
     public List<DoctypeShareFolderMapping> findPanacheSafe(@QueryParam("doctype") String doctype) {
         return DoctypeShareFolderMapping.findByDoctypePanacheSafe(doctype);
+    }
+
+    @GET
+    @Path("/panache-find-safe")
+    public List<DoctypeShareFolderMapping> findPanacheFindSafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypePanacheFindSafe(doctype);
     }
 }

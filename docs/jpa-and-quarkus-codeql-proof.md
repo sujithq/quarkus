@@ -10,7 +10,7 @@ This proof separates two different questions that can otherwise get mixed togeth
 The answer from this project is:
 
 1. Yes. Baseline CodeQL already detects the direct JPA example.
-2. Yes. Baseline CodeQL misses the Panache `list(query)` example, and the custom model pack makes CodeQL report it.
+2. Yes. Baseline CodeQL misses the Panache `list(query)` and `find(query)` examples, and the custom model pack makes CodeQL report them.
 
 This means the direct JPA case is a control case, while the Panache case is the custom-model proof.
 
@@ -50,13 +50,19 @@ public DoctypeShareFolderMapping findUnsafe(@QueryParam("doctype") String doctyp
 }
 ```
 
-The Quarkus/Panache endpoint is:
+The Quarkus/Panache endpoints are:
 
 ```java
 @GET
 @Path("/panache-unsafe")
 public List<DoctypeShareFolderMapping> findPanacheUnsafe(@QueryParam("doctype") String doctype) {
     return DoctypeShareFolderMapping.findByDoctypePanacheUnsafe(doctype);
+}
+
+@GET
+@Path("/panache-find-unsafe")
+public List<DoctypeShareFolderMapping> findPanacheFindUnsafe(@QueryParam("doctype") String doctype) {
+    return DoctypeShareFolderMapping.findByDoctypePanacheFindUnsafe(doctype);
 }
 ```
 
@@ -111,7 +117,7 @@ Customer-facing wording:
 
 ## Proof 2: Quarkus/Panache Is Missed By Baseline CodeQL
 
-The Panache vulnerable method is:
+The Panache vulnerable methods are:
 
 ```java
 public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
@@ -119,15 +125,22 @@ public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String 
 
     return list(query);
 }
+
+public static List<DoctypeShareFolderMapping> findByDoctypePanacheFindUnsafe(String doctype) {
+    String query = "doctypeId = '" + doctype + "'";
+
+    return find(query).list();
+}
 ```
 
 Here the sink is no longer a direct JPA method call. The sink is the Quarkus/Panache convenience API:
 
 ```java
 io.quarkus.hibernate.orm.panache.PanacheEntityBase.list(...)
+io.quarkus.hibernate.orm.panache.PanacheEntityBase.find(...)
 ```
 
-In the baseline run, CodeQL reports only the direct JPA finding. It does not report the Panache `list(query)` flow.
+In the baseline run, CodeQL reports only the direct JPA finding. It does not report the Panache `list(query)` or `find(query)` flows.
 
 ### Baseline Result
 
@@ -136,7 +149,7 @@ results/baseline.sarif results=1
 java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
 ```
 
-There is no baseline alert for the Panache call.
+There is no baseline alert for either Panache call.
 
 ### Interpretation
 
@@ -144,7 +157,7 @@ This is the Quarkus/Panache modeling gap.
 
 Customer-facing wording:
 
-> The source is still user-controlled and the query string is still built by concatenation, but baseline CodeQL does not treat Panache `list(query)` as a SQL/HQL execution sink in this test. That is the framework-specific gap.
+> The source is still user-controlled and the query string is still built by concatenation, but baseline CodeQL does not treat Panache `list(query)` or `find(query)` as SQL/HQL execution sinks in this test. That is the framework-specific gap.
 
 ## Custom Model Pack
 
@@ -183,7 +196,7 @@ These tuples tell CodeQL:
 
 The pack does not add a new SQL injection query. It adds framework knowledge that the existing CodeQL Java SQL injection query can consume.
 
-## Proof 3: Modeled Analysis Catches The Panache Case
+## Proof 3: Modeled Analysis Catches The Panache Cases
 
 ### Modeled Command
 
@@ -199,26 +212,28 @@ codeql database analyze db-quarkus codeql/java-queries `
 ### Modeled Result
 
 ```text
-results/modeled.sarif results=2
+results/modeled.sarif results=3
 java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:29
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:21
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:21
 ```
 
 The first finding is the direct JPA control case.
 
-The second finding is the Quarkus/Panache case:
+The second and third findings are the Quarkus/Panache cases:
 
 ```java
 return list(query);
+return find(query).list();
 ```
 
 ### Interpretation
 
-This proves that the model pack closes the Quarkus/Panache gap for this API shape.
+This proves that the model pack closes the Quarkus/Panache gap for both demonstrated API shapes.
 
 Customer-facing wording:
 
-> The baseline run detected only the standard JPA sink. After loading the organization model pack, CodeQL also detected the Panache `list(query)` sink. This demonstrates that org-level model packs can extend CodeQL's framework knowledge without changing the application code or writing a new SQL injection query.
+> The baseline run detected only the standard JPA sink. After loading the organization model pack, CodeQL also detected the Panache `list(query)` and `find(query)` sinks. This demonstrates that org-level model packs can extend CodeQL's framework knowledge without changing the application code or writing a new SQL injection query.
 
 ## Debug Proof: CodeQL Sees The Framework Method
 
@@ -232,10 +247,10 @@ Relevant output:
 
 ```text
 createNativeQuery(...) -> jakarta.persistence.EntityManager.createNativeQuery
-list(...)              -> io.quarkus.hibernate.orm.panache.PanacheEntityBase.list
+list(...)              -> io.quarkus.hibernate.orm.panache.PanacheQuery.list
 ```
 
-This confirms that the model tuple matches the method CodeQL sees in the database.
+The validation SARIF is the authoritative proof for the model pack. The debug output is still useful as supporting context because it shows the fluent Panache query chain CodeQL extracts around the modeled call.
 
 The argument-position debug query confirms the JPA SQL argument:
 
@@ -318,13 +333,14 @@ codeql database analyze db-quarkus codeql/java-queries --model-packs=local/quark
 Expected result:
 
 ```text
-modeled.sarif results=2
+modeled.sarif results=3
 ```
 
 Meaning:
 
 1. Direct JPA SQL injection is still detected.
-2. Panache SQL injection is now detected because of the model pack.
+2. Panache `list(query)` SQL injection is now detected because of the model pack.
+3. Panache `find(query)` SQL injection is now detected because of the model pack.
 
 ### 6. Compare SARIF Counts
 
@@ -346,9 +362,10 @@ Expected result:
 results/baseline.sarif results=1
 java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36 This query depends on a user-provided value.
 
-results/modeled.sarif results=2
+results/modeled.sarif results=3
 java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36 This query depends on a user-provided value.
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:29 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:21 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:21 This query depends on a user-provided value.
 ```
 
 ## What This Proves
@@ -369,9 +386,10 @@ The Panache sink is not detected by baseline CodeQL in this test.
 
 ```text
 @QueryParam -> string concatenation -> PanacheEntityBase.list(query)
+@QueryParam -> string concatenation -> PanacheEntityBase.find(query)
 ```
 
-After adding a model pack entry for `PanacheEntityBase.list(Argument[0])`, CodeQL reports the issue.
+After adding model pack entries for `PanacheEntityBase.list(Argument[0])` and `PanacheEntityBase.find(Argument[0])`, CodeQL reports both issues.
 
 This is the org-level modeling proof.
 
@@ -379,7 +397,7 @@ This is the org-level modeling proof.
 
 Use this wording:
 
-> We separated the problem into two cases. The direct `EntityManager.createNativeQuery` case is standard JPA and is already detected by CodeQL. The Quarkus/Panache `list(query)` case was not detected in the baseline run because CodeQL did not treat that framework helper as a SQL execution sink in this test. After adding an organization-level CodeQL model pack that marks `PanacheEntityBase.list(Argument[0])` as a SQL injection sink, the standard CodeQL SQL injection query reported the vulnerability. This proves that organization-level model packs can close framework-specific modeling gaps without writing a custom query or changing application code.
+> We separated the problem into two cases. The direct `EntityManager.createNativeQuery` case is standard JPA and is already detected by CodeQL. The Quarkus/Panache `list(query)` and `find(query)` cases were not detected in the baseline run because CodeQL did not treat those framework helpers as SQL execution sinks in this test. After adding an organization-level CodeQL model pack that marks `PanacheEntityBase.list(Argument[0])` and `PanacheEntityBase.find(Argument[0])` as SQL injection sinks, the standard CodeQL SQL injection query reported both vulnerabilities. This proves that organization-level model packs can close framework-specific modeling gaps without writing a custom query or changing application code.
 
 ## Important Caveats
 

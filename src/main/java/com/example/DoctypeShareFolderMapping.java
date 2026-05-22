@@ -47,15 +47,25 @@ public class DoctypeShareFolderMapping extends PanacheEntityBase {
                         DoctypeShareFolderMapping.class)
                 .setParameter(1, doctype)
                 .getSingleResult();
-        }
+    }
 
-        public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
-                String query = "doctypeId = '" + doctype + "'";
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
+        String query = "doctypeId = '" + doctype + "'";
 
-                return list(query);
-        }
+        return list(query);
+    }
 
-        public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String doctype) {
-                return list("doctypeId", doctype);
-        }
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheFindUnsafe(String doctype) {
+        String query = "doctypeId = '" + doctype + "'";
+
+        return find(query).list();
+    }
+
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String doctype) {
+        return list("doctypeId", doctype);
+    }
+
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheFindSafe(String doctype) {
+        return find("doctypeId", doctype).list();
+    }
 }

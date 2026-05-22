@@ -71,6 +71,16 @@ Fix applied after this failure:
 
 ## Verified Evidence
 
+Local reference-pack validation after adding a real Panache `find(query)` example confirmed:
+
+1. Fresh throwaway database: `.aw-find-verify/db-quarkus` created successfully with `mvn clean package`.
+2. Baseline SQL injection query without model pack: 1 result.
+3. Reference model pack from `ql/src/quarkus-sinks.model.yml`: 3 results.
+4. Baseline detected the JPA control case at `DoctypeShareFolderMapping.java:35:36`.
+5. Reference model detected the Panache `list(query)` vulnerability at `DoctypeShareFolderMapping.java:55:21`.
+6. Reference model detected the Panache `find(query)` vulnerability at `DoctypeShareFolderMapping.java:61:21`.
+7. This means the reference `PanacheEntityBase.find(Argument[0])` row is now backed by a real `src/main` flow, not just by framework-family inference.
+
 VERIFY run `26270112644` confirmed executable CodeQL validation:
 
 1. Baseline without model pack: 1 result.
@@ -100,7 +110,7 @@ But the current DETECT/PROPOSE logic is not generic enough for arbitrary reposit
 In this repository:
 
 1. The observed missed vulnerable flow is `PanacheEntityBase.list(query)`.
-2. `PanacheEntityBase.find(...)` is a reasonable sibling model because it is in the known-good reference pack, but it is not directly exercised by the current vulnerable sample.
+2. `PanacheEntityBase.find(query)` is now also directly exercised by the vulnerable sample and detected by the reference model pack.
 3. Earlier runs proposed broader speculative entries such as `update`, `delete`, and `PanacheRepository` variants.
 4. VERIFY can prove only what the repository demonstrates. It cannot prove unexercised sibling API models unless test/demo flows exist for them.
 

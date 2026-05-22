@@ -177,9 +177,22 @@ CodeQL should treat the first value passed to Panache `find(...)` as a dangerous
 
 Where this appears in the sample app:
 
-This exact method is modeled, but the current sample app does not call Panache `find(...)`.
+- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L33).
+- Data flow: the endpoint passes `doctype` into `findByDoctypePanacheFindUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L34).
+- Query construction: the code pastes `doctype` directly into a Panache query string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L59).
+- Sink: the completed query string is passed to `find(query)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L61).
 
-Example of what this entry is meant to catch:
+Simple flow:
+
+```text
+User request parameter "doctype"
+  -> findPanacheFindUnsafe(doctype)
+  -> findByDoctypePanacheFindUnsafe(doctype)
+  -> Panache query string is built using that value
+  -> find(query)
+```
+
+Example of the pattern this entry catches:
 
 ```java
 String query = "doctypeId = '" + doctype + "'";
@@ -192,12 +205,13 @@ Panache `find(...)` is commonly used for quick database lookups. If the lookup q
 
 ## What The Current Results Show
 
-The modeled CodeQL results show two actual unsafe flows in this sample application:
+The modeled CodeQL results show three actual unsafe flows in this sample application:
 
 - `EntityManager.createNativeQuery(...)` receives a SQL string built from the `doctype` request parameter.
 - Panache `list(...)` receives a query string built from the `doctype` request parameter.
+- Panache `find(...)` receives a query string built from the `doctype` request parameter.
 
-The other four entries are still useful because they cover similar unsafe patterns that may appear in real Quarkus, JPA, or Hibernate codebases.
+The other three entries are still useful because they cover similar unsafe patterns that may appear in real Quarkus, JPA, or Hibernate codebases.
 
 ## Safe Pattern To Prefer
 
@@ -220,4 +234,5 @@ For Panache, prefer passing the value separately instead of building the query t
 
 ```java
 list("doctypeId", doctype);
+find("doctypeId", doctype);
 ```
