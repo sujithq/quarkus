@@ -97,6 +97,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SAFEOUTPUTS_PATH: ${{ steps.artifact.outputs.safeoutputs_path }}
           NEXT_PHASE: ${{ steps.phase.outputs.next_phase }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
 
@@ -124,6 +125,16 @@ jobs:
           )"
 
           if [ -z "$output_json" ]; then
+            noop_message="$(node -e 'const fs = require("fs"); const lines = fs.readFileSync(process.argv[1], "utf8").split(/\r?\n/).map((line) => line.trim()).filter(Boolean); for (const line of lines) { const item = JSON.parse(line); if (item.type === "noop" && item.message) { process.stdout.write(item.message); process.exit(0); } }' "$SAFEOUTPUTS_PATH")"
+
+            if [ "$NEXT_PHASE" = "PROPOSE" ] && [[ "$noop_message" == *"MODEL_GENERATED"* && "$noop_message" == *"VERIFY"* ]]; then
+              echo "DETECT reported an existing generated model ready for VERIFY; dispatching VERIFY on $SOURCE_BRANCH."
+              echo "branch=$SOURCE_BRANCH" >> "$GITHUB_OUTPUT"
+              echo "next_workflow=verify-model-pack.lock.yml" >> "$GITHUB_OUTPUT"
+              echo "next_phase=VERIFY" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             echo "No create_pull_request branch found; skipping chain."
             echo "branch=" >> "$GITHUB_OUTPUT"
             exit 0
@@ -202,8 +213,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
           REPOSITORY: ${{ github.repository }}
-          NEXT_WORKFLOW: ${{ steps.phase.outputs.next_workflow }}
-          NEXT_PHASE: ${{ steps.phase.outputs.next_phase }}
+          NEXT_WORKFLOW: ${{ steps.branch.outputs.next_workflow || steps.phase.outputs.next_workflow }}
+          NEXT_PHASE: ${{ steps.branch.outputs.next_phase || steps.phase.outputs.next_phase }}
           NEXT_REF: ${{ steps.branch.outputs.branch }}
           SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
           SOURCE_RUN_URL: ${{ github.event.workflow_run.html_url }}
