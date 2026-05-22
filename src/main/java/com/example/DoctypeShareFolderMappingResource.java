@@ -23,6 +23,42 @@ public class DoctypeShareFolderMappingResource {
     }
 
     @GET
+    @Path("/jpa-query-unsafe")
+    public List<DoctypeShareFolderMapping> findJpaQueryUnsafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypeJpaQueryUnsafe(doctype);
+    }
+
+    @GET
+    @Path("/jpa-query-safe")
+    public List<DoctypeShareFolderMapping> findJpaQuerySafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypeJpaQuerySafe(doctype);
+    }
+
+    @GET
+    @Path("/hibernate-query-unsafe")
+    public List<DoctypeShareFolderMapping> findHibernateQueryUnsafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypeHibernateQueryUnsafe(doctype);
+    }
+
+    @GET
+    @Path("/hibernate-query-safe")
+    public List<DoctypeShareFolderMapping> findHibernateQuerySafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypeHibernateQuerySafe(doctype);
+    }
+
+    @GET
+    @Path("/hibernate-native-unsafe")
+    public List<DoctypeShareFolderMapping> findHibernateNativeUnsafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypeHibernateNativeUnsafe(doctype);
+    }
+
+    @GET
+    @Path("/hibernate-native-safe")
+    public List<DoctypeShareFolderMapping> findHibernateNativeSafe(@QueryParam("doctype") String doctype) {
+        return DoctypeShareFolderMapping.findByDoctypeHibernateNativeSafe(doctype);
+    }
+
+    @GET
     @Path("/panache-unsafe")
     public List<DoctypeShareFolderMapping> findPanacheUnsafe(@QueryParam("doctype") String doctype) {
         return DoctypeShareFolderMapping.findByDoctypePanacheUnsafe(doctype);

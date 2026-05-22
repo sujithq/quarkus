@@ -2,7 +2,9 @@
 
 ## Target Flow
 
-The primary proof case is `DoctypeShareFolderMapping.findByDoctypeUnsafe(String doctype)`.
+The reference model pack now has concrete `src/main` examples for all six sink rows in `ql/src/quarkus-sinks.model.yml`.
+
+The original control case is `DoctypeShareFolderMapping.findByDoctypeUnsafe(String doctype)`.
 
 The tainted value comes from `DoctypeShareFolderMappingResource.findUnsafe(@QueryParam("doctype") String doctype)`, flows into string concatenation, and reaches:
 
@@ -11,6 +13,18 @@ em.createNativeQuery(sql, DoctypeShareFolderMapping.class)
 ```
 
 The sink is the SQL string at `Argument[0]`. The result class parameter is `Argument[1]` and must not be modeled as the SQL sink.
+
+## Standard JPA And Hibernate Flows
+
+The sample app also exercises these standard persistence APIs:
+
+```java
+em.createQuery(query, DoctypeShareFolderMapping.class)
+session.createQuery(query, DoctypeShareFolderMapping.class)
+session.createNativeQuery(sql, DoctypeShareFolderMapping.class)
+```
+
+These examples are useful for proving whether the reference rows add new behavior or duplicate sink knowledge already present in baseline CodeQL. Each unsafe example has a parameterized safe counterpart using `setParameter(...)`.
 
 ## Panache Model-Only Flows
 
@@ -103,23 +117,29 @@ java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:34:3
 
 Important interpretation: the exact `jakarta.persistence.EntityManager.createNativeQuery(sql, Class)` sink is already covered by the current CodeQL Java queries. The custom model pack is valid and loads successfully, but this specific JPA sink no longer provides a before/after demo because the baseline already detects it.
 
-For a stronger customer demo, keep this as the control case and use the Panache `list(query)` and `find(query)` examples as the model-only cases.
+For a stronger customer demo, keep the standard JPA/Hibernate cases as coverage/control cases and use the Panache `list(query)` and `find(query)` examples as the model-only cases.
 
-After adding `findByDoctypePanacheUnsafe` and `findByDoctypePanacheFindUnsafe`, the validated comparison is:
+After adding examples for all six reference model rows, the validated comparison is:
 
 ```text
 results/baseline.sarif
-1 result:
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
+4 results:
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36
 
 results/modeled.sarif
-3 results:
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:21
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:21
+6 results:
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:131:21
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:137:21
 ```
 
-The second and third modeled results are the Quarkus/Panache-specific examples. They prove the organization model pack can add framework knowledge that baseline CodeQL did not apply.
+The first four results are standard JPA/Hibernate coverage/control examples. The last two modeled results are the Quarkus/Panache-specific examples. They prove the organization model pack can add framework knowledge that baseline CodeQL did not apply.
 
 Debug query results confirmed:
 

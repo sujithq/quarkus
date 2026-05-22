@@ -222,6 +222,16 @@ public static List<DoctypeShareFolderMapping> FindByDoctypeUnsafe(string doctype
 
 The important difference is that CodeQL already knew the JPA raw SQL API, but did not report the Panache `list(query)` and `find(query)` cases until we taught it that `PanacheEntityBase.list(Argument[0])` and `PanacheEntityBase.find(Argument[0])` should be treated as SQL/HQL injection sinks.
 
+The sample now also includes companion examples for the other reference model rows:
+
+```java
+em.createQuery(query, DoctypeShareFolderMapping.class);
+session.createQuery(query, DoctypeShareFolderMapping.class);
+session.createNativeQuery(sql, DoctypeShareFolderMapping.class);
+```
+
+Those examples are coverage/control cases for standard JPA and Hibernate APIs. They make the reference model pack auditable row by row, while the Panache examples remain the Quarkus-specific gap proof.
+
 ## Why The First Example Is Not Really A Quarkus Gap
 
 The direct example is:
@@ -235,7 +245,7 @@ Even though the code runs in Quarkus, the vulnerable sink is standard JPA.
 CodeQL baseline detected it:
 
 ```text
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36
 ```
 
 So this proves:
@@ -276,8 +286,8 @@ After adding this model pack entry:
 CodeQL reported the Panache issues:
 
 ```text
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:21
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:21
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:131:21
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:137:21
 ```
 
 This proves:
@@ -298,11 +308,11 @@ CodeQL SQL injection detection needs two main things:
 
 In this POC:
 
-| CodeQL Concept | JPA Case | Panache Case |
+| CodeQL Concept | Standard JPA/Hibernate Cases | Panache Case |
 | --- | --- | --- |
 | Source | `@QueryParam("doctype")` | `@QueryParam("doctype")` |
 | Flow | Method call into entity helper | Method call into entity helper |
-| Sink | `EntityManager.createNativeQuery(sql, ...)` | `PanacheEntityBase.list(query)` and `PanacheEntityBase.find(query)` |
+| Sink | `EntityManager.createNativeQuery(sql, ...)`, `EntityManager.createQuery(query, ...)`, `Session.createQuery(query, ...)`, and `Session.createNativeQuery(sql, ...)` | `PanacheEntityBase.list(query)` and `PanacheEntityBase.find(query)` |
 | Baseline result | Detected | Missed |
 | With model pack | Detected | Detected |
 
@@ -312,12 +322,13 @@ The model pack only changes sink knowledge for Panache. It does not change the a
 
 Use this:
 
-> Quarkus is the application framework. JPA is the standard persistence API. Hibernate is the ORM implementation. Panache is a Quarkus convenience layer on top of Hibernate. In our test, CodeQL already detected the direct JPA raw-query sink. The gap appeared when the query went through the Quarkus/Panache helpers `list(query)` and `find(query)`. By adding model pack entries for `PanacheEntityBase.list(Argument[0])` and `PanacheEntityBase.find(Argument[0])`, we taught CodeQL that these framework helpers are also SQL/HQL execution sinks. The standard CodeQL SQL injection query then detected the vulnerabilities.
+> Quarkus is the application framework. JPA is the standard persistence API. Hibernate is the ORM implementation. Panache is a Quarkus convenience layer on top of Hibernate. In our test, CodeQL already detected the standard JPA and Hibernate query sinks. The gap appeared when the query went through the Quarkus/Panache helpers `list(query)` and `find(query)`. By adding model pack entries for `PanacheEntityBase.list(Argument[0])` and `PanacheEntityBase.find(Argument[0])`, we taught CodeQL that these framework helpers are also SQL/HQL execution sinks. The standard CodeQL SQL injection query then detected the vulnerabilities.
 
 ## One-Line Version
 
 ```text
 JPA direct raw query = already known by CodeQL.
+Standard Hibernate/JPA query APIs = coverage/control examples.
 Quarkus/Panache helper query = needs extra framework modeling.
 ```
 

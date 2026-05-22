@@ -4,24 +4,25 @@
 
 This proof separates two different questions that can otherwise get mixed together:
 
-1. Does CodeQL detect a SQL injection when the sink is standard JPA `EntityManager.createNativeQuery`?
+1. Does CodeQL detect SQL injection when the sink is a standard JPA or Hibernate query API?
 2. Can a custom organization-level model pack close a Quarkus/Panache-specific modeling gap?
 
 The answer from this project is:
 
-1. Yes. Baseline CodeQL already detects the direct JPA example.
+1. Yes. Baseline CodeQL already detects the standard JPA and Hibernate examples.
 2. Yes. Baseline CodeQL misses the Panache `list(query)` and `find(query)` examples, and the custom model pack makes CodeQL report them.
 
-This means the direct JPA case is a control case, while the Panache case is the custom-model proof.
+This means the standard JPA/Hibernate cases are coverage/control cases, while the Panache cases are the custom-model proof.
 
 ## Test Application
 
 The application is a minimal Quarkus 3 project using:
 
 1. Jakarta REST (`@GET`, `@Path`, `@QueryParam`) for user-controlled input.
-2. Jakarta Persistence (`EntityManager`) for the direct JPA case.
-3. Quarkus Hibernate ORM Panache (`PanacheEntityBase`) for the Quarkus/Panache case.
-4. CodeQL Java queries plus a local model pack.
+2. Jakarta Persistence (`EntityManager`) for the direct JPA cases.
+3. Hibernate ORM (`Session`) for direct Hibernate cases.
+4. Quarkus Hibernate ORM Panache (`PanacheEntityBase`) for the Quarkus/Panache cases.
+5. CodeQL Java queries plus a local model pack.
 
 Key files:
 
@@ -68,7 +69,7 @@ public List<DoctypeShareFolderMapping> findPanacheFindUnsafe(@QueryParam("doctyp
 
 This is important because it proves the test is not about artificial local variables. The tainted value comes from an externally controlled HTTP input.
 
-## Proof 1: JPA Is Already Detected By Baseline CodeQL
+## Proof 1: Standard JPA And Hibernate Are Already Detected By Baseline CodeQL
 
 The direct JPA vulnerable method is:
 
@@ -92,7 +93,7 @@ Although this code is inside a Quarkus application, the sink is not Quarkus-spec
 jakarta.persistence.EntityManager.createNativeQuery(...)
 ```
 
-Current CodeQL Java queries already model this JPA API as a SQL injection sink.
+The sample app also includes unsafe examples for `EntityManager.createQuery(...)`, `Session.createQuery(...)`, and `Session.createNativeQuery(...)`. Current CodeQL Java queries already model these standard JPA/Hibernate APIs as SQL injection sinks.
 
 ### Baseline Command
 
@@ -103,17 +104,20 @@ codeql database analyze db-quarkus codeql/java-queries --rerun --format=sarif-la
 ### Baseline Result
 
 ```text
-results/baseline.sarif results=1
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36 This query depends on a user-provided value.
+results/baseline.sarif results=4
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36 This query depends on a user-provided value.
 ```
 
 ### Interpretation
 
-This proves that the direct JPA case does not require a custom Quarkus model pack.
+This proves that the standard JPA/Hibernate cases do not require a custom Quarkus model pack.
 
 Customer-facing wording:
 
-> This vulnerable method is in a Quarkus application, but the SQL execution sink is standard Jakarta Persistence. CodeQL already models `EntityManager.createNativeQuery`, so this specific JPA pattern is detected out of the box.
+> These vulnerable methods are in a Quarkus application, but the SQL execution sinks are standard Jakarta Persistence and Hibernate APIs. CodeQL already models `EntityManager.createNativeQuery`, `EntityManager.createQuery`, `Session.createQuery`, and `Session.createNativeQuery`, so these patterns are detected out of the box.
 
 ## Proof 2: Quarkus/Panache Is Missed By Baseline CodeQL
 
@@ -140,13 +144,16 @@ io.quarkus.hibernate.orm.panache.PanacheEntityBase.list(...)
 io.quarkus.hibernate.orm.panache.PanacheEntityBase.find(...)
 ```
 
-In the baseline run, CodeQL reports only the direct JPA finding. It does not report the Panache `list(query)` or `find(query)` flows.
+In the baseline run, CodeQL reports the four standard JPA/Hibernate findings. It does not report the Panache `list(query)` or `find(query)` flows.
 
 ### Baseline Result
 
 ```text
-results/baseline.sarif results=1
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
+results/baseline.sarif results=4
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36
 ```
 
 There is no baseline alert for either Panache call.
@@ -212,15 +219,18 @@ codeql database analyze db-quarkus codeql/java-queries `
 ### Modeled Result
 
 ```text
-results/modeled.sarif results=3
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:21
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:21
+results/modeled.sarif results=6
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:131:21
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:137:21
 ```
 
-The first finding is the direct JPA control case.
+The first four findings are the standard JPA/Hibernate coverage/control cases.
 
-The second and third findings are the Quarkus/Panache cases:
+The last two findings are the Quarkus/Panache cases:
 
 ```java
 return list(query);
@@ -316,12 +326,12 @@ codeql database analyze db-quarkus codeql/java-queries --rerun --format=sarif-la
 Expected result:
 
 ```text
-baseline.sarif results=1
+baseline.sarif results=4
 ```
 
 Meaning:
 
-1. Direct JPA SQL injection is detected.
+1. Standard JPA/Hibernate SQL injection is detected.
 2. Panache SQL injection is not detected.
 
 ### 5. Run Modeled Analysis
@@ -333,12 +343,12 @@ codeql database analyze db-quarkus codeql/java-queries --model-packs=local/quark
 Expected result:
 
 ```text
-modeled.sarif results=3
+modeled.sarif results=6
 ```
 
 Meaning:
 
-1. Direct JPA SQL injection is still detected.
+1. Standard JPA/Hibernate SQL injection is still detected.
 2. Panache `list(query)` SQL injection is now detected because of the model pack.
 3. Panache `find(query)` SQL injection is now detected because of the model pack.
 
@@ -359,13 +369,19 @@ foreach ($file in 'results/baseline.sarif','results/modeled.sarif') {
 Expected result:
 
 ```text
-results/baseline.sarif results=1
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36 This query depends on a user-provided value.
+results/baseline.sarif results=4
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36 This query depends on a user-provided value.
 
-results/modeled.sarif results=3
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:35:36 This query depends on a user-provided value.
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:55:21 This query depends on a user-provided value.
-java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:21 This query depends on a user-provided value.
+results/modeled.sarif results=6
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:36:36 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:61:30 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:85:30 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:110:36 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:131:21 This query depends on a user-provided value.
+java/sql-injection src/main/java/com/example/DoctypeShareFolderMapping.java:137:21 This query depends on a user-provided value.
 ```
 
 ## What This Proves

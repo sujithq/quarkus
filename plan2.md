@@ -71,24 +71,21 @@ Fix applied after this failure:
 
 ## Verified Evidence
 
-Local reference-pack validation after adding a real Panache `find(query)` example confirmed:
+Local reference-pack validation after adding real examples for all reference rows confirmed:
 
-1. Fresh throwaway database: `.aw-find-verify/db-quarkus` created successfully with `mvn clean package`.
-2. Baseline SQL injection query without model pack: 1 result.
-3. Reference model pack from `ql/src/quarkus-sinks.model.yml`: 3 results.
-4. Baseline detected the JPA control case at `DoctypeShareFolderMapping.java:35:36`.
-5. Reference model detected the Panache `list(query)` vulnerability at `DoctypeShareFolderMapping.java:55:21`.
-6. Reference model detected the Panache `find(query)` vulnerability at `DoctypeShareFolderMapping.java:61:21`.
-7. This means the reference `PanacheEntityBase.find(Argument[0])` row is now backed by a real `src/main` flow, not just by framework-family inference.
+1. Fresh throwaway database: `.aw-all-sinks-verify/db-quarkus` created successfully with `mvn clean package`.
+2. Baseline SQL injection query without model pack: 4 results.
+3. Reference model pack from `ql/src/quarkus-sinks.model.yml`: 6 results.
+4. Baseline detected the standard JPA/Hibernate cases at `DoctypeShareFolderMapping.java:36:36`, `61:30`, `85:30`, and `110:36`.
+5. Reference model also detected the Panache `list(query)` vulnerability at `DoctypeShareFolderMapping.java:131:21`.
+6. Reference model also detected the Panache `find(query)` vulnerability at `DoctypeShareFolderMapping.java:137:21`.
+7. This means every reference model row is now backed by a real `src/main` flow; the standard JPA/Hibernate rows are baseline-covered, while the Panache rows demonstrate the custom model-pack delta.
 
-VERIFY run `26270112644` confirmed executable CodeQL validation:
+Earlier VERIFY run `26270112644` confirmed executable CodeQL validation before the all-row examples were added:
 
-1. Baseline without model pack: 1 result.
-2. Reference model pack from `ql/src/quarkus-sinks.model.yml`: 2 results.
-3. Generated model pack from `.codeql/models/generated-sql-injection-sinks.yaml`: 2 results.
-4. Baseline detected the JPA control case at `DoctypeShareFolderMapping.java:35`.
-5. Generated model detected the Panache vulnerability at `DoctypeShareFolderMapping.java:55:29`.
-6. Generated model matched the reference behavior for the demonstrated gap.
+1. Baseline detected the then-current JPA control case.
+2. The reference and generated model packs both detected the then-current Panache `list(query)` gap.
+3. Generated model behavior matched reference behavior for the demonstrated gap at that time.
 
 The generated model in PR #20 uses the correct Java CodeQL `sinkModel` row shape:
 
@@ -109,10 +106,10 @@ But the current DETECT/PROPOSE logic is not generic enough for arbitrary reposit
 
 In this repository:
 
-1. The observed missed vulnerable flow is `PanacheEntityBase.list(query)`.
-2. `PanacheEntityBase.find(query)` is now also directly exercised by the vulnerable sample and detected by the reference model pack.
+1. The observed missed vulnerable flows are `PanacheEntityBase.list(query)` and `PanacheEntityBase.find(query)`.
+2. The standard JPA/Hibernate reference rows are now also directly exercised by the vulnerable sample and detected by baseline CodeQL.
 3. Earlier runs proposed broader speculative entries such as `update`, `delete`, and `PanacheRepository` variants.
-4. VERIFY can prove only what the repository demonstrates. It cannot prove unexercised sibling API models unless test/demo flows exist for them.
+4. VERIFY can prove only what the repository demonstrates, so any future candidate model row still needs a repo-local test/demo flow before it can be claimed as proven.
 
 ## Remaining Automation Gap
 
@@ -219,8 +216,8 @@ Example summary:
 ```yaml
 verify_result:
   status: VERIFIED
-  baseline_count: 1
-  reference_count: 2
+  baseline_count: 4
+  reference_count: 6
   generated_count: 2
   generated_matches_reference: true
   proven_generated_rows:
