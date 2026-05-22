@@ -76,3 +76,60 @@ None
 
 **status**: MODEL_GENERATED  
 **next**: VERIFY
+
+---
+
+## Validation Results
+
+### Summary
+
+- Generated model file applied: yes
+- Executable CodeQL validation: passed
+- Reference `ql/src` proof compared: yes
+
+### Baseline: No Model Pack
+
+- Result count: 1
+- Expected: JPA control finding only
+- Panache finding present: no
+
+**Details**: Baseline analysis detected only the standard JPA `EntityManager.createNativeQuery` sink at line 35. The Quarkus Panache `PanacheEntityBase.list(query)` call at line 55 was not detected, confirming the modeling gap.
+
+### Reference: Existing `ql/src` Model Pack
+
+- Result count: 2
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+
+**Details**: Reference model pack analysis detected both findings:
+1. Line 35: JPA `createNativeQuery` (control case)
+2. Line 55: Panache `list(query)` (Quarkus-specific case)
+
+This confirms the reference model pack from `ql/src/quarkus-sinks.model.yml` successfully closes the Panache modeling gap.
+
+### Generated Model Pack
+
+- Result count: 2
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+- Generated sink exercised: PanacheEntityBase.list
+
+**Details**: Generated model pack analysis produced identical results to the reference pack:
+1. Line 35: JPA `createNativeQuery` (control case)
+2. Line 55: Panache `list(query)` (Quarkus-specific case)
+
+The generated model file `.codeql/models/generated-sql-injection-sinks.yaml` correctly models `io.quarkus.hibernate.orm.panache.PanacheEntityBase.list(Argument[0])` as a SQL injection sink, enabling CodeQL to detect the vulnerable Panache query execution pattern.
+
+### Validation Confidence
+
+- **high**
+
+The validation demonstrates complete success:
+- Executable CodeQL analysis completed successfully using CodeQL CLI 2.25.4, Java 17, and Maven 3.9.15
+- Generated model pack matches reference model pack behavior exactly
+- Both baseline and modeled runs produce the expected result pattern
+- The Panache finding at line 55 (`src/main/java/com/example/DoctypeShareFolderMapping.java:55:29`) is consistently detected when the model pack is applied
+- The generated sink specification is precise and targets the correct framework API
+
+**status**: VERIFIED  
+**next**: COMPLETE
