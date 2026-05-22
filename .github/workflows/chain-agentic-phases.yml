@@ -406,11 +406,59 @@ jobs:
 
           aw_context="{\"chained_from_run_id\":\"$PROPOSE_RUN_ID\",\"chained_from_pr_number\":\"$pr_number\",\"chained_from_pr_url\":\"$pr_url\"}"
 
+          verify_dispatch_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
           echo "Dispatching VERIFY via verify-model-pack.lock.yml on $next_ref"
           gh workflow run verify-model-pack.lock.yml \
             --repo "$REPOSITORY" \
             --ref "$next_ref" \
             -f aw_context="$aw_context"
+
+          verify_run_id=""
+          for attempt in $(seq 1 30); do
+            runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/verify-model-pack.lock.yml/runs?branch=$next_ref&per_page=20")"
+            verify_run_id="$(RUNS_JSON="$runs_json" DISPATCH_STARTED_AT="$verify_dispatch_started_at" node <<'NODE'
+          const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || [];
+          const dispatchStartedAt = new Date(process.env.DISPATCH_STARTED_AT).getTime();
+
+          const candidates = runs
+            .filter((run) => new Date(run.created_at).getTime() >= dispatchStartedAt - 60000)
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+          if (candidates[0]) {
+            process.stdout.write(String(candidates[0].id));
+          }
+          NODE
+          )"
+            if [ -n "$verify_run_id" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ -z "$verify_run_id" ]; then
+            echo "Could not locate dispatched VERIFY run for $next_ref."
+            exit 1
+          fi
+
+          echo "Waiting for VERIFY run $verify_run_id to complete before finalizing."
+          gh run watch "$verify_run_id" \
+            --repo "$REPOSITORY" \
+            --compact \
+            --interval 30 \
+            --exit-status
+
+          verify_conclusion="$(gh api "repos/$REPOSITORY/actions/runs/$verify_run_id" --jq '.conclusion')"
+          if [ "$verify_conclusion" != "success" ]; then
+            echo "VERIFY run $verify_run_id completed with conclusion '$verify_conclusion'; skipping finalization."
+            exit 1
+          fi
+
+          echo "Dispatching finalizer for VERIFY run $verify_run_id."
+          gh workflow run finalize-verified-model-pack.yml \
+            --repo "$REPOSITORY" \
+            --ref main \
+            -f verify_run_id="$verify_run_id"
 
   dispatch-verify-from-pr:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}

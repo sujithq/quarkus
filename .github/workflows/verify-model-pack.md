@@ -80,9 +80,9 @@ Use these files as the verification pattern:
 
 The clean proof is:
 
-- Baseline CodeQL run without a model pack reports the standard JPA control finding only.
-- Reference modeled run with the existing `ql/src/quarkus-sinks.model.yml` pack reports the JPA control finding plus the Quarkus/Panache finding.
-- Generated modeled run with `.codeql/models/generated-sql-injection-sinks.yaml` must report the same Quarkus/Panache finding as the reference model pack.
+- Baseline CodeQL run without a model pack reports the standard JPA/Hibernate control findings.
+- Reference modeled run with the existing `ql/src/quarkus-sinks.model.yml` pack reports the baseline control findings plus the Quarkus/Panache findings.
+- Generated modeled run with `.codeql/models/generated-sql-injection-sinks.yaml` must report the baseline control findings plus the generated Quarkus/Panache findings.
 
 ---
 
@@ -184,13 +184,13 @@ Compare all three SARIF files:
 - .aw-verify/results/reference-modeled.sarif
 - .aw-verify/results/generated-modeled.sarif
 
-Expected result pattern:
+Expected result pattern for the current repository:
 
-- Baseline: 1 SQL injection result, the standard JPA control case.
-- Reference modeled: 2 SQL injection results, JPA plus Quarkus/Panache.
-- Generated modeled: 2 SQL injection results, JPA plus Quarkus/Panache.
+- Baseline: 4 SQL injection results, the standard JPA/Hibernate control cases.
+- Reference modeled: 6 SQL injection results, JPA/Hibernate plus Quarkus/Panache.
+- Generated modeled: 6 SQL injection results when the generated candidate pack contains all exercised rows.
 
-The generated pack is verified only if the generated modeled run reports the Panache `list(query)` finding at `src/main/java/com/example/DoctypeShareFolderMapping.java` in addition to the JPA control finding.
+The generated pack is verified only if the generated modeled run reports the Panache `list(query)` and `find(query)` findings at `src/main/java/com/example/DoctypeShareFolderMapping.java` while preserving the baseline JPA/Hibernate control findings.
 
 If tools are unavailable or a command fails, do not claim verification succeeded. Record the failure, command, and observed output in the analysis document and set `status: VERIFICATION_BLOCKED`.
 
@@ -200,7 +200,7 @@ Also compare generated model rows with the observed findings. For each row in `.
 - unproven: the row loads successfully, but this repository does not contain an exercised vulnerable flow proving that specific row
 - failed: the row was expected to prove an observed gap but no matching generated result appeared
 
-At minimum, the Panache `PanacheEntityBase.list Argument[0]` row must be proven by the generated modeled SARIF result at `src/main/java/com/example/DoctypeShareFolderMapping.java`.
+At minimum, the Panache `PanacheEntityBase.list Argument[0]` and `PanacheEntityBase.find Argument[0]` rows must be proven by generated modeled SARIF results at `src/main/java/com/example/DoctypeShareFolderMapping.java`. If the generated pack also contains baseline-detected JPA/Hibernate control rows, classify those rows as proven when their corresponding repo-local unsafe findings are present.
 
 ---
 
@@ -208,7 +208,7 @@ At minimum, the Panache `PanacheEntityBase.list Argument[0]` row must be proven 
 
 - high:
   - baseline/reference/generated SARIF comparison matches the expected pattern
-  - generated model pack reports the same Panache finding as the `ql/src` reference pack
+  - generated model pack reports the Panache findings and proves every generated row that has a repo-local exercised unsafe flow
 
 - medium:
   - generated model pack loads and produces an additional SQL injection result, but the exact location differs from the reference proof
@@ -239,19 +239,19 @@ docs/codeql-gap-analysis.md
 ### Baseline: No Model Pack
 
 - Result count: <number>
-- Expected: JPA control finding only
+- Expected: JPA/Hibernate control findings only
 - Panache finding present: <yes | no>
 
 ### Reference: Existing `ql/src` Model Pack
 
 - Result count: <number>
-- Expected: JPA control finding plus Panache finding
+- Expected: JPA/Hibernate control findings plus Panache findings
 - Panache finding present: <yes | no>
 
 ### Generated Model Pack
 
 - Result count: <number>
-- Expected: JPA control finding plus Panache finding
+- Expected: JPA/Hibernate control findings plus Panache findings
 - Panache finding present: <yes | no>
 - Generated sink exercised: <Class.method>
 
