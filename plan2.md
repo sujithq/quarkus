@@ -32,6 +32,15 @@ Started a new DETECT run after committing and pushing the hardening changes:
 9. Result: no new gap-analysis PR was created, so PROPOSE and VERIFY were not reached in this run.
 10. Purpose: validate the hardened DETECT evidence contract and observe whether the end-to-end chain reaches PROPOSE and VERIFY automatically.
 
+Fix applied after this failure:
+
+1. Commit `21d8328` (`fix(aw): guard detect safe output branch context`) updates DETECT to avoid creating safe-output PRs from non-default branches.
+2. `push` trigger is now limited to `main` for `src/**` changes.
+3. Manual DETECT runs from non-default branches must use `noop` and explain that the end-to-end validation should be rerun from `main` after workflow changes are merged.
+4. DETECT safe output is now allowlisted to `docs/codeql-gap-analysis.md` only.
+
+Next validation step: get the DETECT fix onto `main`, then rerun DETECT from `main`. A branch-local manual run is now expected to stop safely instead of creating a broken PR bundle.
+
 Note: GitHub `workflow_run` and scheduled workflow behavior is normally evaluated from the default branch workflow definitions. If this branch run does not exercise the updated chainer, merge or fast-forward the hardening workflow changes to `main`, then repeat the DETECT run from `main` for the representative end-to-end test.
 
 ## Verified Evidence
