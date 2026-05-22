@@ -69,6 +69,15 @@ gh workflow run detect-codeql-gap.lock.yml --ref main
 
 DETECT must run from the default branch. Subsequent phases run on the PR branch DETECT opens.
 
+### Phase PRs are never merged
+
+**Do not merge the phase PRs that DETECT/PROPOSE/VERIFY open.** They are throwaway carriers for the generated artifacts. The finalize step closes them (it calls `gh api ... -X PATCH` with `state: closed`, never `merge`) and captures their contents in a labelled `verified-model-pack` issue. Merging a phase PR would:
+
+- Commit `.codeql/models/generated-sql-injection-sinks.yaml` and `docs/codeql-gap-analysis.md` to `main` (they are intentionally gitignored on `main`).
+- Bypass the idempotent finalize handoff so the verified-model-pack issue would not be created or updated.
+
+If a phase PR needs human review (e.g. confidence is `medium`), comment on the PR and then close it manually — the finalize step still runs on the next chain trigger.
+
 ## State machine
 
 ```

@@ -68,6 +68,10 @@ Do NOT re-implement this in the agent — always call the script.
 
 Never run two phases for the same branch simultaneously. Before starting a phase, check that no in-progress run exists for the branch (matches `chain-agentic-phases.yml` `active_runs` guard).
 
+## Never merge phase PRs
+
+The finalize step closes phase PRs with `state: closed` (see `closePullRequest` in `.github/scripts/finalize-verified-model-pack.js`). It never merges. Phase PRs are throwaway carriers for the generated artifacts — the canonical record lives in the `verified-model-pack` issue. Merging a phase PR would commit gitignored deliverables to `main` and bypass the finalize handoff.
+
 ## Constraints
 
 - Phase PRs share one branch — never create a new branch in PROPOSE or VERIFY.

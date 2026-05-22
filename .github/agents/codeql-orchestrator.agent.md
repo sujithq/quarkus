@@ -49,6 +49,7 @@ Read the last `status:` and `next:` lines in `docs/codeql-gap-analysis.md` and m
 
 - DETECT only runs from the default branch.
 - PROPOSE and VERIFY share one branch and one PR with DETECT — never create a new branch or PR for them.
+- **Phase PRs are never merged.** The finalize step closes them (state: closed) and captures their contents in a `verified-model-pack` issue. If a user asks you to merge a phase PR, refuse and explain the policy.
 - Before invoking any phase, check that no in-progress run exists for the same branch (matches the `active_runs` guard in `chain-agentic-phases.yml`).
 
 ## Finalize step
