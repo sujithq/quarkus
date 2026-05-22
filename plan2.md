@@ -24,8 +24,13 @@ Started a new DETECT run after committing and pushing the hardening changes:
 1. DETECT run `26271228688`: `https://github.com/sujithq/quarkus/actions/runs/26271228688`.
 2. Branch: `codeql-gap-analysis-sql-injection-b678a9e055405cd6-52f39dd9e74aca6a`.
 3. Commit: `d9a6b637caff132c3e4e788a8de0613344cbe823`.
-4. Initial status when recorded: `queued`.
-5. Purpose: validate the hardened DETECT evidence contract and observe whether the end-to-end chain reaches PROPOSE and VERIFY automatically.
+4. Final status: `failure`.
+5. Agent job status: `success`; the agent produced a `create_pull_request` safe output for branch prefix `codeql-gap-analysis-sqli`.
+6. Safe output job status: `failure`.
+7. Blocker: safe-output bundle application failed. The handler tried to fetch `refs/heads/codeql-gap-analysis-sqli` from the generated bundle, but `git bundle list-heads` only exposed `HEAD`, not a `refs/heads/*` ref.
+8. Observed error: `Failed to resolve bundle branch ref from list-heads: expected exactly 1 refs/heads entry, found 0`.
+9. Result: no new gap-analysis PR was created, so PROPOSE and VERIFY were not reached in this run.
+10. Purpose: validate the hardened DETECT evidence contract and observe whether the end-to-end chain reaches PROPOSE and VERIFY automatically.
 
 Note: GitHub `workflow_run` and scheduled workflow behavior is normally evaluated from the default branch workflow definitions. If this branch run does not exercise the updated chainer, merge or fast-forward the hardening workflow changes to `main`, then repeat the DETECT run from `main` for the representative end-to-end test.
 
