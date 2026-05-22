@@ -1,0 +1,11 @@
+extensions:
+  - addsTo:
+      pack: codeql/java-all
+      extensible: sinkModel
+    data:
+      - ["io.quarkus.hibernate.orm.panache.PanacheEntityBase", "list", "Argument[0]", "sql-injection"]
+      - ["io.quarkus.hibernate.orm.panache.PanacheEntityBase", "find", "Argument[0]", "sql-injection"]
+      - ["io.quarkus.hibernate.orm.panache.PanacheEntityBase", "update", "Argument[0]", "sql-injection"]
+      - ["io.quarkus.hibernate.orm.panache.PanacheEntityBase", "delete", "Argument[0]", "sql-injection"]
+      - ["io.quarkus.hibernate.orm.panache.PanacheRepository", "list", "Argument[0]", "sql-injection"]
+      - ["io.quarkus.hibernate.orm.panache.PanacheRepository", "find", "Argument[0]", "sql-injection"]
