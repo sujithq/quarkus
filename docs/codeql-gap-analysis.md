@@ -334,3 +334,32 @@ The repository also contains safe implementations demonstrating proper parameter
    - CDI bean resolution
    - Panache active record pattern
    - Entity inheritance hierarchies
+
+---
+
+## Model Pack Proposal
+
+- Model file: .codeql/models/generated-sql-injection-sinks.yaml
+- Merge mode: enabled (existing entries preserved)
+
+### Added entries
+
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.list (framework, observed)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.find (framework, observed)
+
+### Skipped entries
+
+- jakarta.persistence.EntityManager.createNativeQuery (jpa / already modelled in standard CodeQL libraries)
+- jakarta.persistence.EntityManager.createQuery (jpa / already modelled in standard CodeQL libraries)
+- org.hibernate.Session.createQuery (jpa / already modelled in standard CodeQL libraries)
+- org.hibernate.Session.createNativeQuery (jpa / already modelled in standard CodeQL libraries)
+
+### Candidate related sinks
+
+- io.quarkus.hibernate.orm.panache.PanacheQuery.stream (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.count (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.delete (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.update (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+
+status: MODEL_GENERATED
+next: VERIFY
