@@ -6,7 +6,10 @@ permissions:
   contents: read
 
 engine: copilot
-network: defaults
+network:
+  allowed:
+    - defaults
+    - github
 
 safe-outputs:
   create-pull-request:
@@ -92,7 +95,7 @@ Required tools:
 - Maven
 - CodeQL CLI
 
-The GitHub Actions execution environment may not have `codeql` on `PATH`. In that case, bootstrap the official CodeQL bundle locally and add it to `PATH` for the current shell session. Do not commit the downloaded tools.
+The GitHub Actions execution environment may not have `codeql` on `PATH`. In that case, bootstrap the official CodeQL bundle locally and add it to `PATH` for the current shell session. Do not commit the downloaded tools. The workflow network allowlist includes the `github` ecosystem so GitHub release asset redirects are permitted.
 
 On Linux runners, use:
 
