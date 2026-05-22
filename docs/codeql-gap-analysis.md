@@ -1,7 +1,7 @@
 # CodeQL Gap Analysis
 
-status: GAP_DETECTED  
-next: PROPOSE_MODEL
+status: MODEL_GENERATED  
+next: VERIFY
 
 ---
 
@@ -187,3 +187,26 @@ next: PROPOSE_MODEL
 - Similar methods in `PanacheRepository` and related classes
 
 This will close the detection gap and improve security coverage for Quarkus applications.
+
+---
+
+## Model Pack Proposal
+
+- Model file: `.codeql/models/generated-sql-injection-sinks.yaml`
+- Merge mode: enabled (existing entries preserved)
+
+### Added entries
+
+- `io.quarkus.hibernate.orm.panache.PanacheEntityBase.list` (framework)
+- `io.quarkus.hibernate.orm.panache.PanacheEntityBase.find` (framework)
+- `io.quarkus.hibernate.orm.panache.PanacheEntityBase.update` (framework)
+- `io.quarkus.hibernate.orm.panache.PanacheEntityBase.delete` (framework)
+- `io.quarkus.hibernate.orm.panache.PanacheRepository.list` (framework)
+- `io.quarkus.hibernate.orm.panache.PanacheRepository.find` (framework)
+
+### Skipped entries
+
+- `jakarta.persistence.EntityManager.createNativeQuery` (already modelled by CodeQL baseline)
+
+status: MODEL_GENERATED  
+next: VERIFY
