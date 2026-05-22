@@ -222,3 +222,152 @@ None. All observed gaps were successfully modeled.
 
 status: MODEL_GENERATED
 next: VERIFY
+
+---
+
+## Validation Results
+
+### Summary
+
+- Generated model file applied: yes
+- Executable CodeQL validation: passed
+- Reference `ql/src` proof compared: yes
+
+### Baseline: No Model Pack
+
+- Result count: 4
+- Expected: JPA control finding only
+- Panache finding present: no
+
+Baseline detected only the standard JPA/Hibernate SQL injection patterns:
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:36:36` - EntityManager.createNativeQuery
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:61:30` - EntityManager.createQuery
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:85:30` - Session.createQuery
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:110:36` - Session.createNativeQuery
+
+The Quarkus Panache `list(query)` at line 131 and `find(query)` at line 137 were NOT detected, confirming the modeling gap.
+
+### Reference: Existing `ql/src` Model Pack
+
+- Result count: 6
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+
+Reference model pack detected all 4 baseline findings plus 2 Panache findings:
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:131:21` - PanacheEntityBase.list(query)
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:137:21` - PanacheEntityBase.find(query)
+
+This confirms the reference model pack (`ql/src/quarkus-sinks.model.yml`) successfully closes the Quarkus/Panache gap.
+
+### Generated Model Pack
+
+- Result count: 6
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+- Generated sink exercised: PanacheEntityBase.list, PanacheEntityBase.find
+
+Generated model pack detected identical results to the reference pack:
+- All 4 baseline JPA/Hibernate findings
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:131:21` - PanacheEntityBase.list(query)
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:137:21` - PanacheEntityBase.find(query)
+
+The generated model entries successfully triggered CodeQL's SQL injection query on both Panache API shapes.
+
+### Generated Row Proof
+
+```yaml
+verify_result:
+  status: VERIFIED
+  baseline_count: 4
+  reference_count: 6
+  generated_count: 6
+  generated_matches_reference: true
+  proven_generated_rows:
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.list Argument[0]
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.find Argument[0]
+  unproven_generated_rows: []
+  failed_generated_rows: []
+```
+
+### Row-by-Row Analysis
+
+**Generated model file:** `.codeql/models/generated-sql-injection-sinks.yaml`
+
+| Package | Type | Method | Argument | Status | Evidence |
+|---------|------|--------|----------|--------|----------|
+| io.quarkus.hibernate.orm.panache | PanacheEntityBase | list | Argument[0] | **proven** | Line 131: `list(query)` reported as SQL injection |
+| io.quarkus.hibernate.orm.panache | PanacheEntityBase | find | Argument[0] | **proven** | Line 137: `find(query)` reported as SQL injection |
+
+Both generated model rows were successfully proven by executable CodeQL validation. Each row:
+1. Loaded successfully into CodeQL's sink model extension point
+2. Triggered the standard CodeQL Java SQL injection query (`java/sql-injection`)
+3. Reported the exact vulnerable flow documented in the gap analysis
+4. Matched the behavior of the hand-crafted reference model pack
+
+### Validation Confidence
+
+**high**
+
+Rationale:
+- Executable CodeQL validation completed successfully
+- Baseline/reference/generated SARIF comparison matches expected pattern exactly
+- Generated model pack reports identical findings to reference model pack
+- Both documented Panache vulnerabilities (lines 131 and 137) are detected
+- Generated model rows are proven by repository-local vulnerable flows
+- No additional findings or missing findings compared to reference
+
+### Executable Environment
+
+- Java: OpenJDK 17.0.19
+- Maven: 3.9.16
+- CodeQL CLI: 2.25.5
+- CodeQL Query Pack: codeql/java-queries (java-security-extended suite)
+- Build: `mvn clean package -DskipTests`
+- Database: Java extraction with Maven build command
+
+### Validation Commands
+
+```bash
+# Install CodeQL CLI
+mkdir -p .aw-verify/tools
+curl -L https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz \
+  -o .aw-verify/codeql-bundle-linux64.tar.gz
+tar -xzf .aw-verify/codeql-bundle-linux64.tar.gz -C .aw-verify/tools
+export PATH="$PWD/.aw-verify/tools/codeql:$PATH"
+
+# Build application
+mvn clean package -DskipTests -Dmaven.repo.local=.aw-verify/m2-repo
+
+# Create CodeQL database
+codeql database create .aw-verify/db-quarkus --overwrite --language=java \
+  --command="mvn clean package -DskipTests -Dmaven.repo.local=.aw-verify/m2-repo"
+
+# Run baseline analysis
+codeql database analyze .aw-verify/db-quarkus codeql/java-queries:codeql-suites/java-security-extended.qls \
+  --rerun --format=sarif-latest --output=.aw-verify/results/baseline.sarif
+
+# Run reference modeled analysis
+codeql pack install .
+codeql database analyze .aw-verify/db-quarkus codeql/java-queries:codeql-suites/java-security-extended.qls \
+  --model-packs=local/quarkus-models --additional-packs=. \
+  --rerun --format=sarif-latest --output=.aw-verify/results/reference-modeled.sarif
+
+# Run generated modeled analysis
+codeql pack install .aw-verify/generated-pack
+codeql database analyze .aw-verify/db-quarkus codeql/java-queries:codeql-suites/java-security-extended.qls \
+  --model-packs=local/generated-quarkus-models --additional-packs=.aw-verify/generated-pack \
+  --rerun --format=sarif-latest --output=.aw-verify/results/generated-modeled.sarif
+```
+
+### Comparison Matrix
+
+| Analysis | Model Pack | SQL Injection Results | JPA Control | Panache list() | Panache find() |
+|----------|------------|----------------------|-------------|----------------|----------------|
+| Baseline | none | 4 | ✓ (4 cases) | ✗ | ✗ |
+| Reference | `ql/src/quarkus-sinks.model.yml` | 6 | ✓ (4 cases) | ✓ (line 131) | ✓ (line 137) |
+| Generated | `.codeql/models/generated-sql-injection-sinks.yaml` | 6 | ✓ (4 cases) | ✓ (line 131) | ✓ (line 137) |
+
+The generated model pack achieves functional parity with the reference model pack for the documented Quarkus/Panache SQL injection gap.
+
+status: VERIFIED
+next: COMPLETE
