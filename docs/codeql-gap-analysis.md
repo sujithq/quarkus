@@ -215,3 +215,54 @@ public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String do
 
 **status**: MODEL_GENERATED  
 **next**: VERIFY
+
+---
+
+## Validation Results
+
+### Summary
+
+- Generated model file applied: yes
+- Executable CodeQL validation: passed
+- Reference `ql/src` proof compared: yes
+
+### Baseline: No Model Pack
+
+- Result count: 1
+- Expected: JPA control finding only
+- Panache finding present: no
+
+**Detected:**
+- `java/sql-injection` at `src/main/java/com/example/DoctypeShareFolderMapping.java:35:36` (EntityManager.createNativeQuery)
+
+### Reference: Existing `ql/src` Model Pack
+
+- Result count: 2
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+
+**Detected:**
+- `java/sql-injection` at `src/main/java/com/example/DoctypeShareFolderMapping.java:35:36` (EntityManager.createNativeQuery)
+- `java/sql-injection` at `src/main/java/com/example/DoctypeShareFolderMapping.java:55:29` (PanacheEntityBase.list)
+
+### Generated Model Pack
+
+- Result count: 2
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+- Generated sink exercised: PanacheEntityBase.list
+
+**Detected:**
+- `java/sql-injection` at `src/main/java/com/example/DoctypeShareFolderMapping.java:35:36` (EntityManager.createNativeQuery)
+- `java/sql-injection` at `src/main/java/com/example/DoctypeShareFolderMapping.java:55:29` (PanacheEntityBase.list)
+
+### Validation Confidence
+
+- high
+
+The generated model pack successfully reproduces the reference proof. Both the reference model pack (`ql/src/quarkus-sinks.model.yml`) and the generated model pack (`.codeql/models/generated-sql-injection-sinks.yaml`) detect the same Panache `list(query)` vulnerability at line 55, demonstrating that the generated model entries are functionally equivalent to the manually crafted reference models.
+
+The baseline analysis detected only the standard JPA control case (line 35), confirming that CodeQL's default Java queries do not model Quarkus Panache sinks. After applying either model pack, CodeQL correctly identifies both the JPA control case and the Panache framework-specific vulnerability, validating the model pack approach for closing framework-specific modeling gaps.
+
+**status**: VERIFIED  
+**next**: COMPLETE
