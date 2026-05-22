@@ -58,3 +58,21 @@ CodeQL's baseline SQL injection detection successfully identifies traditional JP
 **Impact**: Applications using Quarkus Panache ORM with string concatenation in query construction are vulnerable to SQL injection but will not be flagged by standard CodeQL analysis.
 
 **Recommendation**: Proceed to PROPOSE_MODEL workflow to add Panache-specific sinks to CodeQL model coverage.
+
+---
+
+## Model Pack Proposal
+
+- Model file: .codeql/models/generated-sql-injection-sinks.yaml
+- Merge mode: enabled (existing entries preserved)
+
+### Added entries
+
+- `PanacheEntityBase.list` (framework)
+
+### Skipped entries
+
+None
+
+**status**: MODEL_GENERATED  
+**next**: VERIFY
