@@ -1,6 +1,8 @@
 ---
 on:
    push:
+      branches:
+         - main
       paths:
          - src/**
    workflow_dispatch:
@@ -13,7 +15,10 @@ network: defaults
 
 safe-outputs:
    create-pull-request:
-    max: 1
+      max: 1
+      protected-files: allowed
+      allowed-files:
+         - docs/codeql-gap-analysis.md
 
 ---
 
@@ -24,6 +29,12 @@ Analyse the repository to detect SQL injection patterns that are NOT detected by
 ## Instructions
 
 When this workflow is manually run or triggered by source changes:
+
+0. Validate the run context:
+   - DETECT must create gap-analysis pull requests from the repository default branch only.
+   - If this workflow is running from any non-default branch or from a branch that already contains phase output such as docs/codeql-gap-analysis.md, do not create a pull request.
+   - In that case, use noop and explain that DETECT must be rerun from `main` after workflow changes are merged.
+   - This avoids generating a safe-output bundle from a feature branch while targeting `main`, which can make the PR bundle impossible to apply.
 
 1. Identify input sources:
    - @QueryParam
@@ -105,6 +116,11 @@ candidate_related_sinks:
 ```
 
 Only include entries under observed_gaps when this repository contains the exercised flow. Put related APIs that are not exercised locally under candidate_related_sinks with auto_model: false.
+
+Keep the state handoff lines plain and machine-readable. Do not wrap them in bold, backticks, or prose:
+
+status: GAP_DETECTED
+next: PROPOSE_MODEL
 
 
 If no findings:
