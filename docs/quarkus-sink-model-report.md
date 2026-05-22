@@ -31,7 +31,7 @@ Where this appears in the sample app:
 - Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L15).
 - Data flow: the endpoint passes `doctype` into `findByDoctypeUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L16).
 - Query construction: the code pastes `doctype` directly into a SQL string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L31).
-- Sink: the completed SQL string is passed to `createNativeQuery(...)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L35).
+- Sink: the completed SQL string is passed to `createNativeQuery(...)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L36).
 
 Simple flow:
 
@@ -61,9 +61,22 @@ CodeQL should treat the first value passed to `EntityManager.createQuery(...)` a
 
 Where this appears in the sample app:
 
-This exact method is modeled, but the current sample app does not call `EntityManager.createQuery(...)`.
+- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L27).
+- Data flow: the endpoint passes `doctype` into `findByDoctypeJpaQueryUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L28).
+- Query construction: the code pastes `doctype` directly into a JPQL string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L58).
+- Sink: the completed JPQL string is passed to `createQuery(...)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L61).
 
-Example of what this entry is meant to catch:
+Simple flow:
+
+```text
+User request parameter "doctype"
+  -> findJpaQueryUnsafe(doctype)
+  -> findByDoctypeJpaQueryUnsafe(doctype)
+  -> JPQL string is built using that value
+  -> createQuery(query, ...)
+```
+
+Example of the pattern this entry catches:
 
 ```java
 String query = "from DoctypeShareFolderMapping where doctypeId = '" + doctype + "'";
@@ -88,9 +101,22 @@ CodeQL should treat the first value passed to `org.hibernate.Session.createQuery
 
 Where this appears in the sample app:
 
-This exact method is modeled, but the current sample app does not call `Session.createQuery(...)`.
+- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L39).
+- Data flow: the endpoint passes `doctype` into `findByDoctypeHibernateQueryUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L40).
+- Query construction: the code pastes `doctype` directly into an HQL string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L82).
+- Sink: the completed HQL string is passed to `Session.createQuery(...)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L85).
 
-Example of what this entry is meant to catch:
+Simple flow:
+
+```text
+User request parameter "doctype"
+  -> findHibernateQueryUnsafe(doctype)
+  -> findByDoctypeHibernateQueryUnsafe(doctype)
+  -> HQL string is built using that value
+  -> session.createQuery(query, ...)
+```
+
+Example of the pattern this entry catches:
 
 ```java
 String query = "from DoctypeShareFolderMapping where doctypeId = '" + doctype + "'";
@@ -115,9 +141,22 @@ CodeQL should treat the first value passed to `org.hibernate.Session.createNativ
 
 Where this appears in the sample app:
 
-This exact method is modeled, but the current sample app does not call `Session.createNativeQuery(...)`.
+- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L51).
+- Data flow: the endpoint passes `doctype` into `findByDoctypeHibernateNativeUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L52).
+- Query construction: the code pastes `doctype` directly into a SQL string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L107).
+- Sink: the completed SQL string is passed to `Session.createNativeQuery(...)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L110).
 
-Example of what this entry is meant to catch:
+Simple flow:
+
+```text
+User request parameter "doctype"
+  -> findHibernateNativeUnsafe(doctype)
+  -> findByDoctypeHibernateNativeUnsafe(doctype)
+  -> SQL string is built using that value
+  -> session.createNativeQuery(sql, ...)
+```
+
+Example of the pattern this entry catches:
 
 ```java
 String sql = "SELECT * FROM doctype_sharefolder_mapping WHERE doctype_id = '" + doctype + "'";
@@ -144,10 +183,10 @@ The `true` value means this model applies to subclasses of `PanacheEntityBase`, 
 
 Where this appears in the sample app:
 
-- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L27).
-- Data flow: the endpoint passes `doctype` into `findByDoctypePanacheUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L28).
-- Query construction: the code pastes `doctype` directly into a Panache query string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L53).
-- Sink: the completed query string is passed to `list(query)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L55).
+- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L63).
+- Data flow: the endpoint passes `doctype` into `findByDoctypePanacheUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L64).
+- Query construction: the code pastes `doctype` directly into a Panache query string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L129).
+- Sink: the completed query string is passed to `list(query)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L131).
 
 Simple flow:
 
@@ -177,9 +216,22 @@ CodeQL should treat the first value passed to Panache `find(...)` as a dangerous
 
 Where this appears in the sample app:
 
-This exact method is modeled, but the current sample app does not call Panache `find(...)`.
+- Source: the user supplies `doctype` in the HTTP request at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L69).
+- Data flow: the endpoint passes `doctype` into `findByDoctypePanacheFindUnsafe(...)` at [src/main/java/com/example/DoctypeShareFolderMappingResource.java](../src/main/java/com/example/DoctypeShareFolderMappingResource.java#L70).
+- Query construction: the code pastes `doctype` directly into a Panache query string at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L135).
+- Sink: the completed query string is passed to `find(query)` at [src/main/java/com/example/DoctypeShareFolderMapping.java](../src/main/java/com/example/DoctypeShareFolderMapping.java#L137).
 
-Example of what this entry is meant to catch:
+Simple flow:
+
+```text
+User request parameter "doctype"
+  -> findPanacheFindUnsafe(doctype)
+  -> findByDoctypePanacheFindUnsafe(doctype)
+  -> Panache query string is built using that value
+  -> find(query)
+```
+
+Example of the pattern this entry catches:
 
 ```java
 String query = "doctypeId = '" + doctype + "'";
@@ -192,12 +244,16 @@ Panache `find(...)` is commonly used for quick database lookups. If the lookup q
 
 ## What The Current Results Show
 
-The modeled CodeQL results show two actual unsafe flows in this sample application:
+The modeled CodeQL results show six actual unsafe flows in this sample application:
 
 - `EntityManager.createNativeQuery(...)` receives a SQL string built from the `doctype` request parameter.
+- `EntityManager.createQuery(...)` receives a JPQL string built from the `doctype` request parameter.
+- `Session.createQuery(...)` receives an HQL string built from the `doctype` request parameter.
+- `Session.createNativeQuery(...)` receives a SQL string built from the `doctype` request parameter.
 - Panache `list(...)` receives a query string built from the `doctype` request parameter.
+- Panache `find(...)` receives a query string built from the `doctype` request parameter.
 
-The other four entries are still useful because they cover similar unsafe patterns that may appear in real Quarkus, JPA, or Hibernate codebases.
+Each reference model entry is now backed by a concrete source-to-sink flow in `src/main`.
 
 ## Safe Pattern To Prefer
 
@@ -216,8 +272,16 @@ em.createNativeQuery("... WHERE doctype_id = ?1", DoctypeShareFolderMapping.clas
         .setParameter(1, doctype);
 ```
 
+For JPQL/HQL, prefer named parameters:
+
+```java
+createQuery("FROM DoctypeShareFolderMapping WHERE doctypeId = :doctype", DoctypeShareFolderMapping.class)
+  .setParameter("doctype", doctype);
+```
+
 For Panache, prefer passing the value separately instead of building the query text yourself:
 
 ```java
 list("doctypeId", doctype);
+find("doctypeId", doctype);
 ```

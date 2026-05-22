@@ -58,16 +58,27 @@ When this workflow is manually run:
 
 ### 4. Extract findings
 
-For EACH finding:
+Prefer the `Evidence Contract` YAML block in docs/codeql-gap-analysis.md.
+
+For EACH entry in `observed_gaps`:
 
 - Extract:
-  - Sink (Class.method)
-  - Gap Type
-  - Confidence
+  - sink_package
+  - sink_type
+  - sink_method
+  - sink_argument
+  - gap_type
+  - confidence
 
 Only process:
 
-- Gap Type == missing-sink
+- gap_type == missing-sink
+- evidence is repo-local-flow, sarif-diff, query-result, or manual-code-path
+- confidence is high or medium
+
+Do NOT auto-model entries from `candidate_related_sinks` unless they also appear under `observed_gaps`.
+
+If the input file only contains the legacy `## Finding` format, process those findings as a backwards-compatible fallback, but record that the evidence contract was missing.
 
 ---
 
@@ -84,14 +95,16 @@ Classify each sink:
 
 ### 6. Transform sinks into CodeQL entries
 
-For each valid sink, generate a Java `sinkModel` row using the same schema as `ql/src/quarkus-sinks.model.yml`:
+For each valid observed sink, generate a Java `sinkModel` row using the same schema as `ql/src/quarkus-sinks.model.yml`:
 
 ["<package>", "<type>", true, "<method>", "", "", "Argument[0]", "sql-injection", "manual"]
 
 Rules:
 
-- Split the fully qualified class name into package and type.
+- Use `sink_package` and `sink_type` from the evidence contract when present.
+- For legacy findings, split the fully qualified class name into package and type.
 - Use `true` for subtypes when modelling framework base classes or interfaces such as Panache types.
+- Use the evidence contract's `sink_argument` when present; otherwise default to `Argument[0]`.
 - Use empty strings for signature and extension unless a more specific signature is required.
 - Use `manual` for provenance.
 
@@ -158,11 +171,15 @@ docs/codeql-gap-analysis.md
 
 ### Added entries
 
-- <Class.method> (<classification>)
+- <Package.Type.method> (<classification>, observed)
 
 ### Skipped entries
 
-- <Class.method> (jpa / duplicate / already modelled)
+- <Package.Type.method> (jpa / duplicate / already modelled / candidate-only / evidence-contract-missing)
+
+### Candidate related sinks
+
+- <Package.Type.method> (not auto-modelled; evidence: <evidence>; confidence: <confidence>)
 
 status: MODEL_GENERATED
 next: VERIFY
@@ -199,6 +216,7 @@ extensions:
 - Do NOT modify CodeQL queries
 - Do NOT remove existing model entries
 - Do NOT generalise beyond method level
+- Do NOT silently model candidate_related_sinks that are not observed in this repository
 - Avoid false positives
 
 ---

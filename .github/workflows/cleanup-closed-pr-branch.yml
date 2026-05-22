@@ -1,0 +1,76 @@
+name: Cleanup Closed PR Branch
+
+on:
+  pull_request_target:
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Closed pull request number to clean up
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete unmerged same-repo PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$EVENT_PR_NUMBER"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pr_number="$DISPATCH_PR_NUMBER"
+          fi
+
+          if [ -z "$pr_number" ]; then
+            echo "No pull request number found for cleanup."
+            exit 1
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+          merged="$(jq -r '.merged' <<<"$pr_json")"
+          state="$(jq -r '.state' <<<"$pr_json")"
+          head_repository="$(jq -r '.head.repo.full_name' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref' <<<"$pr_json")"
+          base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+
+          if [ "$state" != "closed" ]; then
+            echo "Skipping cleanup for PR #$pr_number because it is not closed."
+            exit 0
+          fi
+
+          if [ "$merged" != "false" ]; then
+            echo "Skipping cleanup for PR #$pr_number because it was merged."
+            exit 0
+          fi
+
+          if [ "$head_repository" != "$REPOSITORY" ]; then
+            echo "Skipping branch cleanup for fork PR branch: $head_repository:$head_ref"
+            exit 0
+          fi
+
+          if [ "$head_ref" = "$base_ref" ] || [ "$head_ref" = "$DEFAULT_BRANCH" ]; then
+            echo "Skipping protected branch cleanup for: $head_ref"
+            exit 0
+          fi
+
+          if ! gh api "repos/$REPOSITORY/git/ref/heads/$head_ref" >/dev/null 2>&1; then
+            echo "Branch '$head_ref' no longer exists; nothing to delete."
+            exit 0
+          fi
+
+          echo "Deleting branch for closed PR #$pr_number: $head_ref"
+          gh api "repos/$REPOSITORY/git/refs/heads/$head_ref" -X DELETE

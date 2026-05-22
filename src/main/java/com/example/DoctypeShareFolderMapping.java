@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.List;
+import org.hibernate.Session;
 
 @Entity
 @Table(name = "doctype_sharefolder_mapping")
@@ -47,15 +48,100 @@ public class DoctypeShareFolderMapping extends PanacheEntityBase {
                         DoctypeShareFolderMapping.class)
                 .setParameter(1, doctype)
                 .getSingleResult();
-        }
+    }
 
-        public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
-                String query = "doctypeId = '" + doctype + "'";
+            public static List<DoctypeShareFolderMapping> findByDoctypeJpaQueryUnsafe(String doctype) {
+            EntityManager em = Arc.container()
+                .instance(EntityManager.class)
+                .get();
 
-                return list(query);
-        }
+            String query = "FROM DoctypeShareFolderMapping WHERE doctypeId = '" + doctype + "'";
 
-        public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String doctype) {
-                return list("doctypeId", doctype);
-        }
+            return em
+                .createQuery(query, DoctypeShareFolderMapping.class)
+                .getResultList();
+            }
+
+            public static List<DoctypeShareFolderMapping> findByDoctypeJpaQuerySafe(String doctype) {
+            EntityManager em = Arc.container()
+                .instance(EntityManager.class)
+                .get();
+
+            return em
+                .createQuery("FROM DoctypeShareFolderMapping WHERE doctypeId = :doctype", DoctypeShareFolderMapping.class)
+                .setParameter("doctype", doctype)
+                .getResultList();
+            }
+
+            public static List<DoctypeShareFolderMapping> findByDoctypeHibernateQueryUnsafe(String doctype) {
+            Session session = Arc.container()
+                .instance(EntityManager.class)
+                .get()
+                .unwrap(Session.class);
+
+            String query = "FROM DoctypeShareFolderMapping WHERE doctypeId = '" + doctype + "'";
+
+            return session
+                .createQuery(query, DoctypeShareFolderMapping.class)
+                .list();
+            }
+
+            public static List<DoctypeShareFolderMapping> findByDoctypeHibernateQuerySafe(String doctype) {
+            Session session = Arc.container()
+                .instance(EntityManager.class)
+                .get()
+                .unwrap(Session.class);
+
+            return session
+                .createQuery("FROM DoctypeShareFolderMapping WHERE doctypeId = :doctype", DoctypeShareFolderMapping.class)
+                .setParameter("doctype", doctype)
+                .list();
+            }
+
+            public static List<DoctypeShareFolderMapping> findByDoctypeHibernateNativeUnsafe(String doctype) {
+            Session session = Arc.container()
+                .instance(EntityManager.class)
+                .get()
+                .unwrap(Session.class);
+
+            String sql = "SELECT * FROM doctype_sharefolder_mapping WHERE doctype_id = '" + doctype + "'";
+
+            return session
+                .createNativeQuery(sql, DoctypeShareFolderMapping.class)
+                .list();
+            }
+
+            public static List<DoctypeShareFolderMapping> findByDoctypeHibernateNativeSafe(String doctype) {
+            Session session = Arc.container()
+                .instance(EntityManager.class)
+                .get()
+                .unwrap(Session.class);
+
+            return session
+                .createNativeQuery(
+                    "SELECT * FROM doctype_sharefolder_mapping WHERE doctype_id = ?1",
+                    DoctypeShareFolderMapping.class)
+                .setParameter(1, doctype)
+                .list();
+            }
+
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheUnsafe(String doctype) {
+        String query = "doctypeId = '" + doctype + "'";
+
+        return list(query);
+    }
+
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheFindUnsafe(String doctype) {
+        String query = "doctypeId = '" + doctype + "'";
+
+        return find(query).list();
+    }
+
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheSafe(String doctype) {
+        return list("doctypeId", doctype);
+    }
+
+    public static List<DoctypeShareFolderMapping> findByDoctypePanacheFindSafe(String doctype) {
+        return find("doctypeId", doctype).list();
+    }
 }
