@@ -41,6 +41,14 @@ Fix applied after this failure:
 
 Next validation step: get the DETECT fix onto `main`, then rerun DETECT from `main`. A branch-local manual run is now expected to stop safely instead of creating a broken PR bundle.
 
+New main DETECT run started:
+
+1. DETECT run `26271677947`: `https://github.com/sujithq/quarkus/actions/runs/26271677947`.
+2. Branch: `main`.
+3. Commit: `e4f9c24b674217dfc9b7e8ac9444aa98450581b8`.
+4. Initial status when recorded: `queued`.
+5. Note: this run uses the currently active workflow definition on `main`. At dispatch time, `main` had not yet picked up branch commit `21d8328`, but running from `main` avoids the feature-branch safe-output bundle failure.
+
 Note: GitHub `workflow_run` and scheduled workflow behavior is normally evaluated from the default branch workflow definitions. If this branch run does not exercise the updated chainer, merge or fast-forward the hardening workflow changes to `main`, then repeat the DETECT run from `main` for the representative end-to-end test.
 
 ## Verified Evidence
