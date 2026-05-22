@@ -17,6 +17,18 @@ Fresh end-to-end run:
 9. Manual VERIFY run `26270112644` completed successfully.
 10. VERIFY safe output reported `Status: VERIFIED` and `Next: COMPLETE`.
 
+## Live Hardening Validation
+
+Started a new DETECT run after committing and pushing the hardening changes:
+
+1. DETECT run `26271228688`: `https://github.com/sujithq/quarkus/actions/runs/26271228688`.
+2. Branch: `codeql-gap-analysis-sql-injection-b678a9e055405cd6-52f39dd9e74aca6a`.
+3. Commit: `d9a6b637caff132c3e4e788a8de0613344cbe823`.
+4. Initial status when recorded: `queued`.
+5. Purpose: validate the hardened DETECT evidence contract and observe whether the end-to-end chain reaches PROPOSE and VERIFY automatically.
+
+Note: GitHub `workflow_run` and scheduled workflow behavior is normally evaluated from the default branch workflow definitions. If this branch run does not exercise the updated chainer, merge or fast-forward the hardening workflow changes to `main`, then repeat the DETECT run from `main` for the representative end-to-end test.
+
 ## Verified Evidence
 
 VERIFY run `26270112644` confirmed executable CodeQL validation:
