@@ -1,6 +1,14 @@
 name: Chain Agentic CodeQL Phases
 
 on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    paths:
+      - .codeql/models/generated-sql-injection-sinks.yaml
+      - docs/codeql-gap-analysis.md
   workflow_run:
     workflows:
       - "DETECT CodeQL Coverage Gaps (SQL Injection)"
@@ -11,10 +19,11 @@ on:
 permissions:
   actions: write
   contents: read
+  pull-requests: read
 
 jobs:
   dispatch-next-phase:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve next phase
@@ -177,6 +186,55 @@ jobs:
 
           echo "Dispatching $NEXT_PHASE via $NEXT_WORKFLOW on $NEXT_REF"
           gh workflow run "$NEXT_WORKFLOW" \
+            --repo "$REPOSITORY" \
+            --ref "$NEXT_REF" \
+            -f aw_context="$aw_context"
+
+  dispatch-verify-from-pr:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read analysis state
+        id: analysis
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          if ! content="$(gh api "repos/$REPOSITORY/contents/docs/codeql-gap-analysis.md?ref=$HEAD_REF" --jq '.content' 2>/dev/null)"; then
+            echo "docs/codeql-gap-analysis.md not found on $HEAD_REF; skipping."
+            echo "should_dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          decoded="$(printf '%s' "$content" | base64 --decode)"
+
+          if grep -q 'status: MODEL_GENERATED' <<< "$decoded" && grep -q 'next: VERIFY' <<< "$decoded"; then
+            echo "should_dispatch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR is not ready for VERIFY; skipping."
+            echo "should_dispatch=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch VERIFY
+        if: ${{ steps.analysis.outputs.should_dispatch == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          NEXT_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+
+          aw_context="{\"chained_from_pr_number\":\"$PR_NUMBER\",\"chained_from_pr_url\":\"$PR_URL\"}"
+
+          echo "Dispatching VERIFY via verify-model-pack.lock.yml on $NEXT_REF"
+          gh workflow run verify-model-pack.lock.yml \
             --repo "$REPOSITORY" \
             --ref "$NEXT_REF" \
             -f aw_context="$aw_context"
