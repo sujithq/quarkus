@@ -84,9 +84,20 @@ Classify each sink:
 
 ### 6. Transform sinks into CodeQL entries
 
-For each valid sink, generate:
+For each valid sink, generate a Java `sinkModel` row using the same schema as `ql/src/quarkus-sinks.model.yml`:
 
-["<Class>", "<method>", "Argument[0]", "sql-injection"]
+["<package>", "<type>", true, "<method>", "", "", "Argument[0]", "sql-injection", "manual"]
+
+Rules:
+
+- Split the fully qualified class name into package and type.
+- Use `true` for subtypes when modelling framework base classes or interfaces such as Panache types.
+- Use empty strings for signature and extension unless a more specific signature is required.
+- Use `manual` for provenance.
+
+Example:
+
+["io.quarkus.hibernate.orm.panache", "PanacheEntityBase", true, "list", "", "", "Argument[0]", "sql-injection", "manual"]
 
 ---
 
@@ -113,7 +124,7 @@ Target file:
 - Merge new entries into existing list
 
 - Deduplicate using key:
-  Class + Method + Argument + Kind
+  Package + Type + Method + Argument + Kind
 
 - Do NOT remove existing entries
 
@@ -178,8 +189,8 @@ extensions:
       pack: codeql/java-all
       extensible: sinkModel
     data:
-      - ["io.quarkus.hibernate.orm.panache.PanacheEntityBase", "list", "Argument[0]", "sql-injection"]
-      - ["com.example.repo.CustomRepository", "executeQuery", "Argument[0]", "sql-injection"]
+      - ["io.quarkus.hibernate.orm.panache", "PanacheEntityBase", true, "list", "", "", "Argument[0]", "sql-injection", "manual"]
+      - ["com.example.repo", "CustomRepository", true, "executeQuery", "", "", "Argument[0]", "sql-injection", "manual"]
 
 ---
 
