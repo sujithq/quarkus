@@ -84,7 +84,7 @@ The clean proof is:
 
 ### 6. Perform executable CodeQL validation
 
-Run the actual project verification when tools are available.
+Run the actual project verification. If the CodeQL CLI is not already available, install it into `.aw-verify/tools` before validating.
 
 Required tools:
 
@@ -92,33 +92,55 @@ Required tools:
 - Maven
 - CodeQL CLI
 
+The GitHub Actions execution environment may not have `codeql` on `PATH`. In that case, bootstrap the official CodeQL bundle locally and add it to `PATH` for the current shell session. Do not commit the downloaded tools.
+
+On Linux runners, use:
+
+```bash
+mkdir -p .aw-verify/tools
+curl -L https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz \
+  -o .aw-verify/codeql-bundle-linux64.tar.gz
+tar -xzf .aw-verify/codeql-bundle-linux64.tar.gz -C .aw-verify/tools
+export PATH="$PWD/.aw-verify/tools/codeql:$PATH"
+codeql version
+```
+
+If the bundle download or extraction fails, stop executable validation, record the exact failure, and set `status: VERIFICATION_BLOCKED`.
+
 Commands to run:
 
 1. Verify tools:
 
-```powershell
+```bash
 java -version
 mvn -version
+if ! command -v codeql >/dev/null 2>&1; then
+  mkdir -p .aw-verify/tools
+  curl -L https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz \
+    -o .aw-verify/codeql-bundle-linux64.tar.gz
+  tar -xzf .aw-verify/codeql-bundle-linux64.tar.gz -C .aw-verify/tools
+  export PATH="$PWD/.aw-verify/tools/codeql:$PATH"
+fi
 codeql version
 ```
 
 2. Build and create a fresh CodeQL database:
 
-```powershell
+```bash
 mvn clean package
 codeql database create .aw-verify/db-quarkus --overwrite --language=java --command="mvn clean package"
 ```
 
 3. Run baseline analysis without any model pack:
 
-```powershell
-New-Item -ItemType Directory -Force .aw-verify/results | Out-Null
+```bash
+mkdir -p .aw-verify/results
 codeql database analyze .aw-verify/db-quarkus codeql/java-queries --rerun --format=sarif-latest --output=.aw-verify/results/baseline.sarif
 ```
 
 4. Run reference modeled analysis using the existing project model pack from `ql/src`:
 
-```powershell
+```bash
 codeql pack install
 codeql database analyze .aw-verify/db-quarkus codeql/java-queries --model-packs=local/quarkus-models --additional-packs=. --rerun --format=sarif-latest --output=.aw-verify/results/reference-modeled.sarif
 ```
@@ -141,7 +163,7 @@ dataExtensions:
 
 Then run:
 
-```powershell
+```bash
 codeql pack install .aw-verify/generated-pack
 codeql database analyze .aw-verify/db-quarkus codeql/java-queries --model-packs=local/generated-quarkus-models --additional-packs=.aw-verify/generated-pack --rerun --format=sarif-latest --output=.aw-verify/results/generated-modeled.sarif
 ```
@@ -243,7 +265,7 @@ next: <COMPLETE | FIX_GENERATED_MODEL | RERUN_WITH_TOOLING>
 
 ## Constraints
 
-- Do execute the real CodeQL comparison when Java, Maven, and CodeQL CLI are available
+- Do execute the real CodeQL comparison; install CodeQL CLI locally first when it is missing from `PATH`
 - Do NOT commit `.aw-verify` or other temporary verification files
 - Do NOT modify model files
 - Do NOT introduce new sinks
