@@ -208,6 +208,7 @@ jobs:
           echo "branch=$resolved_branch" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch next phase
+        id: dispatch
         if: ${{ steps.branch.outputs.branch != '' }}
         shell: bash
         env:
@@ -222,6 +223,7 @@ jobs:
           set -euo pipefail
 
           aw_context="{\"chained_from_run_id\":\"$SOURCE_RUN_ID\",\"chained_from_run_url\":\"$SOURCE_RUN_URL\"}"
+          dispatch_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
           runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/$NEXT_WORKFLOW/runs?branch=$NEXT_REF&per_page=20")"
           active_runs="$(RUNS_JSON="$runs_json" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; process.stdout.write(String(runs.filter((run) => run.status !== "completed").length));')"
@@ -241,6 +243,173 @@ jobs:
           gh workflow run "$NEXT_WORKFLOW" \
             --repo "$REPOSITORY" \
             --ref "$NEXT_REF" \
+            -f aw_context="$aw_context"
+
+          echo "dispatched_phase=$NEXT_PHASE" >> "$GITHUB_OUTPUT"
+          echo "dispatched_ref=$NEXT_REF" >> "$GITHUB_OUTPUT"
+
+          if [ "$NEXT_PHASE" != "PROPOSE" ]; then
+            exit 0
+          fi
+
+          dispatched_run_id=""
+          for attempt in $(seq 1 30); do
+            runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/$NEXT_WORKFLOW/runs?branch=$NEXT_REF&per_page=20")"
+            dispatched_run_id="$(RUNS_JSON="$runs_json" DISPATCH_STARTED_AT="$dispatch_started_at" node <<'NODE'
+          const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || [];
+          const dispatchStartedAt = new Date(process.env.DISPATCH_STARTED_AT).getTime();
+
+          const candidates = runs
+            .filter((run) => new Date(run.created_at).getTime() >= dispatchStartedAt - 60000)
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+          if (candidates[0]) {
+            process.stdout.write(String(candidates[0].id));
+          }
+          NODE
+          )"
+            if [ -n "$dispatched_run_id" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ -z "$dispatched_run_id" ]; then
+            echo "Could not locate dispatched PROPOSE run for $NEXT_REF."
+            exit 1
+          fi
+
+          echo "dispatched_run_id=$dispatched_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch VERIFY after PROPOSE completion
+        if: ${{ steps.dispatch.outputs.dispatched_phase == 'PROPOSE' && steps.dispatch.outputs.dispatched_run_id != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_CI_TRIGGER_TOKEN || github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PROPOSE_RUN_ID: ${{ steps.dispatch.outputs.dispatched_run_id }}
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for PROPOSE run $PROPOSE_RUN_ID to complete before dispatching VERIFY."
+          gh run watch "$PROPOSE_RUN_ID" \
+            --repo "$REPOSITORY" \
+            --compact \
+            --interval 30 \
+            --exit-status
+
+          conclusion="$(gh api "repos/$REPOSITORY/actions/runs/$PROPOSE_RUN_ID" --jq '.conclusion')"
+          if [ "$conclusion" != "success" ]; then
+            echo "PROPOSE run $PROPOSE_RUN_ID completed with conclusion '$conclusion'; skipping VERIFY."
+            exit 1
+          fi
+
+          artifact_dir="$RUNNER_TEMP/propose-agent-artifact"
+          mkdir -p "$artifact_dir"
+
+          gh run download "$PROPOSE_RUN_ID" \
+            --repo "$REPOSITORY" \
+            --name agent \
+            --dir "$artifact_dir"
+
+          safeoutputs_path="$(find "$artifact_dir" -type f -name safeoutputs.jsonl | head -n 1)"
+          if [ -z "$safeoutputs_path" ]; then
+            echo "No safeoutputs.jsonl found in PROPOSE artifact; cannot dispatch VERIFY."
+            exit 1
+          fi
+
+          output_json="$(SAFEOUTPUTS_PATH="$safeoutputs_path" node <<'NODE'
+          const fs = require('fs');
+
+          const lines = fs.readFileSync(process.env.SAFEOUTPUTS_PATH, 'utf8')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+
+          for (const line of lines) {
+            const item = JSON.parse(line);
+            if (item.type === 'create_pull_request' && item.branch) {
+              process.stdout.write(JSON.stringify({
+                branch: item.branch,
+                title: item.title || '',
+                baseBranch: item.base_branch || 'main'
+              }));
+              process.exit(0);
+            }
+          }
+          NODE
+          )"
+
+          if [ -z "$output_json" ]; then
+            echo "No create_pull_request output found in PROPOSE artifact; skipping VERIFY."
+            exit 0
+          fi
+
+          requested_branch="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).branch)' "$output_json")"
+          title="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).title)' "$output_json")"
+          base_branch="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).baseBranch)' "$output_json")"
+
+          prs_json="$(gh pr list \
+            --repo "$REPOSITORY" \
+            --state open \
+            --base "$base_branch" \
+            --json number,title,headRefName,headRefOid,headRepository,url \
+            --limit 100)"
+          prs_json_path="$RUNNER_TEMP/open-prs-after-propose.json"
+          printf '%s' "$prs_json" > "$prs_json_path"
+
+          resolved_json="$(PRS_JSON_PATH="$prs_json_path" REQUESTED_BRANCH="$requested_branch" PR_TITLE="$title" REPOSITORY="$REPOSITORY" node <<'NODE'
+          const fs = require('fs');
+
+          const prs = JSON.parse(fs.readFileSync(process.env.PRS_JSON_PATH, 'utf8'));
+          const requestedBranch = process.env.REQUESTED_BRANCH;
+          const title = process.env.PR_TITLE;
+          const repository = process.env.REPOSITORY;
+
+          const matches = prs.filter((pr) => {
+            const sameRepo = pr.headRepository && pr.headRepository.nameWithOwner === repository;
+            const titleMatches = !title || pr.title === title;
+            const branchMatches = pr.headRefName === requestedBranch || pr.headRefName.startsWith(`${requestedBranch}-`);
+            return sameRepo && titleMatches && branchMatches;
+          });
+
+          matches.sort((a, b) => b.number - a.number);
+
+          if (matches[0]) {
+            process.stdout.write(JSON.stringify(matches[0]));
+          }
+          NODE
+          )"
+
+          if [ -z "$resolved_json" ]; then
+            echo "Could not resolve generated model PR branch for requested branch '$requested_branch'."
+            exit 1
+          fi
+
+          next_ref="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).headRefName)' "$resolved_json")"
+          head_sha="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).headRefOid)' "$resolved_json")"
+          pr_number="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).number))' "$resolved_json")"
+          pr_url="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).url)' "$resolved_json")"
+
+          runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/verify-model-pack.lock.yml/runs?branch=$next_ref&per_page=20")"
+          active_runs="$(RUNS_JSON="$runs_json" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; process.stdout.write(String(runs.filter((run) => run.status !== "completed").length));')"
+          if [ "$active_runs" != "0" ]; then
+            echo "VERIFY is already active for $next_ref; skipping dispatch."
+            exit 0
+          fi
+
+          verified_head="$(RUNS_JSON="$runs_json" HEAD_SHA="$head_sha" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; const headSha = process.env.HEAD_SHA; process.stdout.write(String(runs.filter((run) => run.head_sha === headSha && run.conclusion === "success").length));')"
+          if [ "$verified_head" != "0" ]; then
+            echo "VERIFY already succeeded for PR #$pr_number head $head_sha; skipping dispatch."
+            exit 0
+          fi
+
+          aw_context="{\"chained_from_run_id\":\"$PROPOSE_RUN_ID\",\"chained_from_pr_number\":\"$pr_number\",\"chained_from_pr_url\":\"$pr_url\"}"
+
+          echo "Dispatching VERIFY via verify-model-pack.lock.yml on $next_ref"
+          gh workflow run verify-model-pack.lock.yml \
+            --repo "$REPOSITORY" \
+            --ref "$next_ref" \
             -f aw_context="$aw_context"
 
   dispatch-verify-from-pr:
