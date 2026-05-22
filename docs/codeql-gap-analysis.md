@@ -184,5 +184,77 @@ None
 - io.quarkus.hibernate.orm.panache.PanacheEntityBase.delete (not auto-modelled; evidence: framework-family-inference; confidence: medium)
 - io.quarkus.hibernate.orm.panache.PanacheEntityBase.update (not auto-modelled; evidence: framework-family-inference; confidence: medium)
 
-status: MODEL_GENERATED
-next: VERIFY
+## Validation Results
+
+### Summary
+
+- Generated model file applied: yes
+- Executable CodeQL validation: passed
+- Reference `ql/src` proof compared: yes
+
+### Baseline: No Model Pack
+
+- Result count: 4
+- Expected: JPA control finding only
+- Panache finding present: no
+
+**Detected findings:**
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:36:36` - EntityManager.createNativeQuery
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:61:30` - EntityManager.createQuery
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:85:30` - Session.createQuery
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:110:36` - Session.createNativeQuery
+
+### Reference: Existing `ql/src` Model Pack
+
+- Result count: 6
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+
+**Additional findings beyond baseline:**
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:131:21` - PanacheEntityBase.list
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:137:21` - PanacheEntityBase.find
+
+### Generated Model Pack
+
+- Result count: 6
+- Expected: JPA control finding plus Panache finding
+- Panache finding present: yes
+- Generated sink exercised: PanacheEntityBase.list and PanacheEntityBase.find
+
+**Additional findings beyond baseline:**
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:131:21` - PanacheEntityBase.list
+- `src/main/java/com/example/DoctypeShareFolderMapping.java:137:21` - PanacheEntityBase.find
+
+### Generated Row Proof
+
+```yaml
+verify_result:
+  status: VERIFIED
+  baseline_count: 4
+  reference_count: 6
+  generated_count: 6
+  generated_matches_reference: true
+  proven_generated_rows:
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.list Argument[0]
+    - io.quarkus.hibernate.orm.panache.PanacheEntityBase.find Argument[0]
+  unproven_generated_rows: []
+  failed_generated_rows: []
+```
+
+### Validation Confidence
+
+- high
+
+**Rationale:** The generated model pack produces identical results to the reference model pack. Both Panache sinks (`list` and `find`) are proven by exercised vulnerable flows in the repository. Baseline analysis detected only the 4 standard JPA/Hibernate control findings. Both reference and generated model packs detected 6 findings total (4 JPA + 2 Panache), demonstrating that the generated model successfully closes the observed Quarkus/Panache gap.
+
+### Validation Environment
+
+- CodeQL CLI: 2.25.5
+- Java: OpenJDK 17.0.19
+- Maven: 3.9.15
+- Build: SUCCESS
+- Database creation: SUCCESS
+- All three analyses: SUCCESS
+
+status: VERIFIED
+next: COMPLETE
