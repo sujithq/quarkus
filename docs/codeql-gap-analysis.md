@@ -199,5 +199,26 @@ The safe pattern keeps user input separate from query structure, preventing inje
 
 ---
 
-status: GAP_DETECTED
-next: PROPOSE_MODEL
+## Model Pack Proposal
+
+- Model file: .codeql/models/generated-sql-injection-sinks.yaml
+- Merge mode: enabled (existing entries preserved)
+
+### Added entries
+
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.list (framework, observed)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.find (framework, observed)
+
+### Skipped entries
+
+None. All observed gaps were successfully modeled.
+
+### Candidate related sinks
+
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.stream (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.count (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.delete (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+- io.quarkus.hibernate.orm.panache.PanacheEntityBase.update (not auto-modelled; evidence: framework-family-inference; confidence: medium)
+
+status: MODEL_GENERATED
+next: VERIFY
