@@ -8,7 +8,7 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/5 * * * *"
   pull_request:
     types:
       - opened
@@ -223,6 +223,20 @@ jobs:
 
           aw_context="{\"chained_from_run_id\":\"$SOURCE_RUN_ID\",\"chained_from_run_url\":\"$SOURCE_RUN_URL\"}"
 
+          runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/$NEXT_WORKFLOW/runs?branch=$NEXT_REF&per_page=20")"
+          active_runs="$(RUNS_JSON="$runs_json" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; process.stdout.write(String(runs.filter((run) => run.status !== "completed").length));')"
+          if [ "$active_runs" != "0" ]; then
+            echo "$NEXT_PHASE is already active for $NEXT_REF; skipping dispatch."
+            exit 0
+          fi
+
+          head_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$NEXT_REF" --jq '.object.sha')"
+          succeeded_for_head="$(RUNS_JSON="$runs_json" HEAD_SHA="$head_sha" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; const headSha = process.env.HEAD_SHA; process.stdout.write(String(runs.filter((run) => run.head_sha === headSha && run.conclusion === "success").length));')"
+          if [ "$succeeded_for_head" != "0" ]; then
+            echo "$NEXT_PHASE already succeeded for $NEXT_REF at $head_sha; skipping dispatch."
+            exit 0
+          fi
+
           echo "Dispatching $NEXT_PHASE via $NEXT_WORKFLOW on $NEXT_REF"
           gh workflow run "$NEXT_WORKFLOW" \
             --repo "$REPOSITORY" \
@@ -273,6 +287,20 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
+
+          runs_json="$(gh api "repos/$REPOSITORY/actions/workflows/verify-model-pack.lock.yml/runs?branch=$NEXT_REF&per_page=20")"
+          active_runs="$(RUNS_JSON="$runs_json" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; process.stdout.write(String(runs.filter((run) => run.status !== "completed").length));')"
+          if [ "$active_runs" != "0" ]; then
+            echo "VERIFY is already active for $NEXT_REF; skipping dispatch."
+            exit 0
+          fi
+
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          verified_head="$(RUNS_JSON="$runs_json" HEAD_SHA="$head_sha" node -e 'const runs = JSON.parse(process.env.RUNS_JSON).workflow_runs || []; const headSha = process.env.HEAD_SHA; process.stdout.write(String(runs.filter((run) => run.head_sha === headSha && run.conclusion === "success").length));')"
+          if [ "$verified_head" != "0" ]; then
+            echo "VERIFY already succeeded for PR #$PR_NUMBER head $head_sha; skipping dispatch."
+            exit 0
+          fi
 
           aw_context="{\"chained_from_pr_number\":\"$PR_NUMBER\",\"chained_from_pr_url\":\"$PR_URL\"}"
 
