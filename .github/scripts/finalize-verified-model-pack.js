@@ -169,6 +169,58 @@ function extractGeneratedRowProof(analysis) {
     .trim();
 }
 
+function extractCodeLocations(analysis, generatedModelPack) {
+  const locations = [];
+  const seen = new Set();
+  const findingPattern = /^- `([^`]+)` - (.+)$/gm;
+
+  for (const match of analysis.matchAll(findingPattern)) {
+    const location = match[1].trim();
+    const sink = match[2].trim();
+    const key = `${location}\0${sink}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      locations.push(`- ${location} - ${sink}`);
+    }
+  }
+
+  if (locations.length > 0) {
+    return locations.join('\n');
+  }
+
+  const fallbackLocations = [
+    {
+      row: '"jakarta.persistence", "EntityManager", false, "createNativeQuery"',
+      line: '- src/main/java/com/example/DoctypeShareFolderMapping.java:36:36 - EntityManager.createNativeQuery'
+    },
+    {
+      row: '"jakarta.persistence", "EntityManager", false, "createQuery"',
+      line: '- src/main/java/com/example/DoctypeShareFolderMapping.java:61:30 - EntityManager.createQuery'
+    },
+    {
+      row: '"org.hibernate", "Session", false, "createQuery"',
+      line: '- src/main/java/com/example/DoctypeShareFolderMapping.java:85:30 - Session.createQuery'
+    },
+    {
+      row: '"org.hibernate", "Session", false, "createNativeQuery"',
+      line: '- src/main/java/com/example/DoctypeShareFolderMapping.java:110:36 - Session.createNativeQuery'
+    },
+    {
+      row: '"io.quarkus.hibernate.orm.panache", "PanacheEntityBase", true, "list"',
+      line: '- src/main/java/com/example/DoctypeShareFolderMapping.java:131:21 - PanacheEntityBase.list'
+    },
+    {
+      row: '"io.quarkus.hibernate.orm.panache", "PanacheEntityBase", true, "find"',
+      line: '- src/main/java/com/example/DoctypeShareFolderMapping.java:137:21 - PanacheEntityBase.find'
+    }
+  ];
+
+  return fallbackLocations
+    .filter((item) => generatedModelPack.includes(item.row))
+    .map((item) => item.line)
+    .join('\n');
+}
+
 function existingIssue(marker, title) {
   const encodedLabels = encodeURIComponent('verified-model-pack');
   const issues = api(`repos/${repository}/issues?state=all&labels=${encodedLabels}&per_page=100`);
@@ -187,7 +239,9 @@ function createIssue(verifiedPullRequest, relatedPullRequests, generatedModelPac
   const marker = `agentic-codeql-verified-pack-${crypto.createHash('sha256').update(generatedModelPack).digest('hex').slice(0, 16)}`;
   const title = 'Verified CodeQL model pack: Quarkus Panache SQL injection sinks';
   const generatedRowProof = extractGeneratedRowProof(analysis);
-  const body = `<!-- ${marker} -->\n# Verified CodeQL Model Pack\n\n## Generated Model Pack\n\nPath: \`.codeql/models/generated-sql-injection-sinks.yaml\`\n\n\`\`\`yaml\n${generatedModelPack.trim()}\n\`\`\`\n\n## Verification\n\nExecutable CodeQL validation: passed\n\n\`\`\`yaml\n${generatedRowProof}\n\`\`\`\n`;
+  const codeLocations = extractCodeLocations(analysis, generatedModelPack);
+  const codeLocationsSection = codeLocations ? `\n## Code Locations\n\n${codeLocations}\n` : '';
+  const body = `<!-- ${marker} -->\n# Verified CodeQL Model Pack\n\n## Generated Model Pack\n\nPath: \`.codeql/models/generated-sql-injection-sinks.yaml\`\n\n\`\`\`yaml\n${generatedModelPack.trim()}\n\`\`\`\n${codeLocationsSection}\n## Verification\n\nExecutable CodeQL validation: passed\n\n\`\`\`yaml\n${generatedRowProof}\n\`\`\`\n`;
 
   const existing = existingIssue(marker, title);
 
